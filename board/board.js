@@ -221,7 +221,7 @@
     state.columns.forEach((col, ci) => {
       if (hideDone && col.id === 'done') return;
       const items = state.tasks.filter(t => t.column === col.id && filtered(t));
-      const c = el('section', 'col'); c.dataset.col = col.id; const h = el('h2'); h.append(el('span', 'dot'), el('span', 'cname', col.name), el('span', 'count', String(items.length))); c.append(h);
+      const c = el('section', 'col' + (col.id === activeCol() ? ' active' : '')); c.dataset.col = col.id; const h = el('h2'); h.append(el('span', 'dot'), el('span', 'cname', col.name), el('span', 'count', String(items.length))); c.append(h);
       const cards = el('div', 'cards');
       cards.addEventListener('dragover', e => { e.preventDefault(); c.classList.add('over'); });
       cards.addEventListener('dragleave', () => c.classList.remove('over'));
@@ -232,7 +232,81 @@
       btn.onclick = go; inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
       add.append(inp, btn); c.append(add); board.append(c);
     });
-    renderStats();
+    renderStats(); renderTabs();
+  }
+
+  // ---- mobile: one column at a time, chosen from a tab strip (or by swiping) ---------------
+  const visibleCols = () => state.columns.filter(c => !($('fHideDone').checked && c.id === 'done'));
+  function activeCol() { const v = visibleCols(), s = LS.get('kb_tab'); return (v.find(c => c.id === s) || v[0] || {}).id; }
+  function setTab(id) { LS.set('kb_tab', id); document.querySelectorAll('.col').forEach(c => c.classList.toggle('active', c.dataset.col === id)); renderTabs(); }
+  function renderTabs() {
+    const box = $('tabs'); box.textContent = ''; const act = activeCol();
+    visibleCols().forEach(col => {
+      const n = state.tasks.filter(t => t.column === col.id && filtered(t)).length;
+      const b = el('button', 'tab' + (col.id === act ? ' on' : ''), col.name); b.append(el('span', 'count', String(n))); b.dataset.col = col.id;
+      b.onclick = () => setTab(col.id); box.append(b);
+    });
+    const on = box.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
+  (() => { let x0 = null, y0 = 0; const b = $('board');
+    b.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+    b.addEventListener('touchend', e => { if (x0 == null || !window.matchMedia('(max-width: 760px)').matches) return;
+      const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null;
+      if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      const v = visibleCols(), i = v.findIndex(c => c.id === activeCol()), n = v[i + (dx < 0 ? 1 : -1)]; if (n) setTab(n.id); }, { passive: true }); })();
+
+  // ---- copy-for-agent prompts ---------------------------------------------------------------
+  function copyText(text, okMsg) {
+    const done = () => toast(okMsg || 'Copied');
+    const fallback = () => { const ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0'; document.body.append(ta); ta.select();
+      try { document.execCommand('copy') ? done() : toast('Copy failed: select and copy manually', true); } catch { toast('Copy failed', true); } ta.remove(); };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+  }
+  let toastTimer = null;
+  function toast(msg, bad) { const t = $('toast'); t.textContent = msg; t.className = 'show' + (bad ? ' bad' : ''); clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.className = ''; }, 2600); }
+  function boardInfo() {
+    const c = cfg(), repoUrl = `https://github.com/${c.repo}`, rawBase = `${repoUrl}/blob/${c.branch}`;
+    return { c, repoUrl, skill: `${rawBase}/.claude/skills/board/SKILL.md`, agents: `${rawBase}/AGENTS.md`,
+      web: `${location.origin}${location.pathname}?repo=${c.repo}&branch=${c.branch}&path=${c.path}` };
+  }
+  function agentPrompt(t) {
+    const { c, repoUrl, skill, agents, web } = boardInfo(), who = c.me || '<your-github-username>';
+    const L = [];
+    L.push('You are working from the Rain Ventures team task board.', '',
+      `Board repo: ${repoUrl}  (task data: ${c.path} on branch ${c.branch})`, `Web board: ${web}`,
+      `Read before starting: ${skill}  and  ${agents}`, '',
+      'How the board works:',
+      `- Clone the repo if you have not (gh repo clone ${c.repo}) and run everything from its root. Never edit ${c.path} by hand; use python3 board/board.py so edits merge safely with other people and agents.`,
+      '- Auth: `gh` logged in, or set BOARD_TOKEN to a fine-grained token (Contents: read/write on the repo).',
+      `- Act for GitHub user @${who}:  export BOARD_USER=${who} BOARD_AGENT=<claude|codex> BOARD_SESSION=<short session id>`,
+      '- Only work on tasks assigned to that user. Client material lives in clients/<client>/; keep confidential detail out of task cards. Do not contact anyone or share prices without the user approving.', '');
+    if (t) {
+      L.push('YOUR TASK', `- id: ${t.id}`, `- title: ${t.title}`, `- column: ${t.column}   priority: ${t.priority || 'medium'}${t.due ? '   due: ' + t.due : ''}`);
+      if (t.client) L.push(`- client: ${t.client}`);
+      if (t.assignees.length) L.push(`- assigned to: ${t.assignees.map(a => '@' + a).join(', ')}`);
+      if (t.labels.length) L.push(`- labels: ${t.labels.join(', ')}`);
+      if (t.details) L.push('- details:', ...t.details.split('\n').map(x => '    ' + x));
+      if (t.links.length) L.push('- links:', ...t.links.map(l => `    ${l.title}: ${l.url}`));
+      if (t.contacts.length) L.push('- contacts:', ...t.contacts.map(k => `    ${[k.name, k.role, k.email, k.phone].filter(Boolean).join(' | ')}`));
+      if (t.claim) L.push(`- NOTE: already claimed by ${t.claim.agent} (session ${t.claim.session_id || '?'}, ${claimState(t.claim)}). Do not take it over unless the user says so.`);
+      L.push('', 'Do this, in order:',
+        `1. python3 board/board.py show ${t.id}   (re-read the latest card first)`,
+        `2. python3 board/board.py claim ${t.id} --note "starting: <one-line plan>"`,
+        `3. Do the work. While working, keep the board current: python3 board/board.py heartbeat ${t.id} --note "<what you are doing>" at each milestone and at least every 10 minutes.`,
+        `4. If you are blocked or need a human: python3 board/board.py heartbeat ${t.id} --status blocked --note "<exactly what you need>" and tell the user.`,
+        `5. When finished: python3 board/board.py done ${t.id} --note "<result and link to the file or PR>"   (or: board.py release ${t.id} --column todo to hand it back)`,
+        'Do not finish your reply without leaving the card claimed-and-current, done, or released.');
+    } else {
+      L.push('Your loop:',
+        '1. python3 board/board.py list --assignee $BOARD_USER --column todo --unclaimed   (find work; python3 board/board.py show <id> to read a card)',
+        '2. python3 board/board.py claim <id> --note "starting: <one-line plan>"',
+        '3. Heartbeat while working: python3 board/board.py heartbeat <id> --note "<what you are doing>" at each milestone and at least every 10 minutes.',
+        '4. Blocked or need a human: python3 board/board.py heartbeat <id> --status blocked --note "<what you need>" and tell the user.',
+        '5. Finished: python3 board/board.py done <id> --note "<result and link>"   (or board.py release <id> --column todo).',
+        '6. New work you discover: python3 board/board.py add "Title" --assign <user> --label <x> --due YYYY-MM-DD --client "<client>" --details "<text and URLs>"',
+        'Never leave a task claimed without a recent heartbeat; update the card as you go, not at the end.');
+    }
+    return L.join('\n');
   }
 
   function renderStats() {
@@ -278,10 +352,13 @@
       if (k.note) b.append(el('div', 'cnote', k.note));
       b.title = `session ${k.session_id || '?'} on ${k.host || '?'}\n${k.cwd || ''}\n${k.branch || ''}`; c.append(b);
     }
-    const mv = el('div', 'moves'), left = el('button', null, '◀'), right = el('button', null, '▶'), edit = el('button', null, 'Edit');
-    left.title = 'Move left'; right.title = 'Move right'; left.disabled = ci === 0; right.disabled = ci === state.columns.length - 1;
-    left.onclick = () => moveTo(t.id, state.columns[ci - 1].id); right.onclick = () => moveTo(t.id, state.columns[ci + 1].id); edit.onclick = () => openCard(t.id);
-    mv.append(left, right, edit); c.append(mv); return c;
+    const cols = state.columns, prev = cols[ci - 1], next = cols[ci + 1];
+    const mv = el('div', 'moves'), left = el('button', 'mv', '◀ ' + (prev ? prev.name : '')), right = el('button', 'mv', (next ? next.name : '') + ' ▶');
+    const edit = el('button', null, 'Edit'), bot = el('button', 'agentbtn', '🤖');
+    left.title = 'Move left'; right.title = 'Move right'; left.disabled = !prev; right.disabled = !next;
+    left.onclick = () => moveTo(t.id, prev.id); right.onclick = () => moveTo(t.id, next.id); edit.onclick = () => openCard(t.id);
+    bot.title = 'Copy instructions for an agent to work on this task'; bot.setAttribute('aria-label', 'Copy agent instructions for this task'); bot.onclick = () => copyText(agentPrompt(t), 'Task instructions copied for an agent');
+    mv.append(left, right, edit, bot); c.append(mv); return c;
   }
 
   function place(n, id, colId, beforeId) {
@@ -367,6 +444,8 @@
     if ($('sToken').value.trim()) LS.set('kb_token', $('sToken').value.trim()); $('dlgSettings').close(); load();
   };
   $('btnRefresh').onclick = () => load();
+  $('btnAgent').onclick = () => copyText(agentPrompt(null), 'Board instructions copied for an agent');
+  $('btnFilters').onclick = () => { const o = document.body.classList.toggle('filters-open'); $('btnFilters').setAttribute('aria-expanded', String(o)); };
   ['fClient', 'fWho', 'fLabel', 'fPrio', 'fAttn', 'fHideDone'].forEach(i => $(i).addEventListener('change', render));
   const canPoll = () => !busy && !document.hidden && !document.querySelector('dialog[open]') && !document.querySelector('.card.dragging') && lastSyncOk;
   setInterval(() => { if (canPoll()) load(true); }, 30000);   // conditional (ETag) so unchanged polls are 304s

@@ -10,19 +10,26 @@
 <body>
 <header>
   <h1><span class="logo">▦</span> Team Board</h1><span id="stats" class="stats"></span>
+  <div class="spacer mobile-only"></div>
+  <button id="btnFilters" class="mobile-only" aria-expanded="false" aria-controls="filters">Filters</button>
+  <div id="filters" class="filters">
   <label>Client <select id="fClient"></select></label>
   <label>Assignee <select id="fWho"></select></label>
   <label>Label <select id="fLabel"></select></label>
   <label>Priority <select id="fPrio"><option value="">All</option><option>high</option><option>medium</option><option>low</option></select></label>
   <label><input type="checkbox" id="fAttn"> Needs attention</label>
   <label><input type="checkbox" id="fHideDone"> Hide done</label>
-  <span class="spacer"></span>
+  </div>
+  <span class="spacer desktop-only"></span>
   <span id="status">Not connected</span>
   <select id="themeSel" title="Theme" aria-label="Theme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="sand">Sand</option></select>
+  <button id="btnAgent" class="primary" title="Copy instructions for an AI agent: the board, how to claim and update tasks, and the skill link">🤖 Copy for agent</button>
   <button id="btnRefresh" title="Reload from GitHub">Refresh</button>
   <button id="btnSettings">Settings</button>
 </header>
+<nav id="tabs" aria-label="Columns"></nav>
 <div id="board"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <dialog id="dlgConflict">
   <h3 style="margin-top:0">This board changed while you were working</h3>
