@@ -5,6 +5,8 @@ Shared static assets and small tools for Rain Ventures. **Public repo: never put
 ## board/
 A static kanban page. It holds no data: it reads and writes a `tasks.json` file in a (private) GitHub repo using a fine-grained token you paste into Settings, kept only in your browser's localStorage and sent only to api.github.com.
 
+Files: `index.html` (markup), `board.css` (styles and the five themes), `board.js` (app logic), `theme.js` (applies the saved theme before first paint). The theme picker in the header (Auto, Light, Dark, Midnight, Sand) is remembered per browser.
+
 Hosted at https://rain-ventures-ai.github.io/co-assets/board/
 
 First-run prefill (no secrets in the link): `.../board/?repo=owner/name&branch=master&path=tasks.json`. Then open Settings and add your GitHub username and token.
