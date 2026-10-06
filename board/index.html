@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Team Board</title>
 <script src="theme.js"></script>
-<link rel="stylesheet" href="board.css">
+<style>html:not(.ready) body { visibility: hidden; }</style>
 </head>
 <body>
 <header>
@@ -60,6 +60,7 @@
     <div><label for="sStyle">Card style</label><select id="sStyle"><option value="classic">Classic</option><option value="colorful">Colourful (client and urgency colours)</option></select></div>
     <div><label for="sTheme">Theme</label><select id="sTheme"><option value="auto">Auto (follows your device)</option><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="sand">Sand</option></select></div>
     <div><label>Unread markers</label><button id="sMarkAll" type="button">Mark all cards as read</button></div>
+    <div><label>App version</label><button id="sUpdate" type="button">Update to latest version</button><div class="hint">Version <code id="sVer">…</code>. The board checks for a new version about every 10 minutes and whenever you come back to the tab. This button forces a full refresh of the page, styles and scripts, skipping every cache.</div></div>
     <div class="actions"><button id="sDone" class="primary">Done</button></div>
   </div>
 
@@ -78,7 +79,7 @@
 </dialog>
 
 <dialog id="dlgCard" class="drawer" aria-label="Task details">
-  <div class="dhead"><span id="dCreated" class="dcreated"></span><span class="spacer"></span><span id="dSaved" class="dsaved" role="status"></span><button id="cClose" class="ico" aria-label="Close">✕</button></div>
+  <div class="dhead"><span id="dCreated" class="dcreated"></span><span class="spacer"></span><span id="dSaved" class="dsaved" role="status"></span><button id="cAgent" type="button" class="small agentcopy" title="Copy instructions for an AI agent to work on this task: the card, how to claim it, and the skill link" aria-label="Copy for agent"><span aria-hidden="true">🤖</span><span class="atxt"> Copy for agent</span></button><button id="cClose" class="ico" aria-label="Close">✕</button></div>
   <div class="dbody" id="cBody">
     <div class="dchips">
       <select id="cCol" class="pillsel" aria-label="Status"></select>
@@ -124,6 +125,33 @@
   </div>
 </dialog>
 
-<script src="board.js"></script>
+<div id="updateBar" class="updatebar" role="status" hidden><span>A new version of the board is available.</span><button id="updNow" class="primary" type="button">Update now</button><button id="updLater" type="button">Later</button></div>
+
+<script>
+/* Bootstrap: GitHub Pages lets browsers cache files for ~10 minutes, so a plain <script src> can serve stale code after a deploy.
+   Here every load revalidates board.css and board.js with the server (a cheap 304 when unchanged), then runs the fresh text.
+   Offline or on any failure it falls back to normal tags so the page still opens from cache. */
+(function () {
+  var done = false, reveal = function () { done = true; document.documentElement.classList.add('ready'); };
+  setTimeout(function () { if (!done) reveal(); }, 6000);                                   // never leave the page blank
+  function get(u) { return fetch(u, { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error(u + ' ' + r.status); return r.text(); }); }
+  function fallback() {
+    var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'board.css'; document.head.appendChild(l);
+    var s = document.createElement('script'); s.src = 'board.js'; document.body.appendChild(s); reveal();
+  }
+  Promise.all([get('board.css'), get('board.js')]).then(function (a) {
+    window.__kbAssets = { css: a[0], js: a[1] };
+    var st = document.createElement('style'); st.textContent = a[0] + '\n/*# sourceURL=board.css */'; document.head.appendChild(st); reveal();
+    var sc = document.createElement('script'); sc.textContent = a[1] + '\n//# sourceURL=board.js'; document.body.appendChild(sc);
+  }).catch(fallback);
+  // The HTML itself can be stale too: compare the cached copy with a revalidated one and reload once if they differ.
+  fetch(location.href, { cache: 'force-cache' }).then(function (r) { return r.text(); }).then(function (cached) {
+    return fetch(location.href, { cache: 'no-cache' }).then(function (r) { return r.text(); }).then(function (fresh) {
+      window.__kbHtml = fresh;
+      if (cached !== fresh) { var k = 'kb_html_reload', t = 0; try { t = +sessionStorage.getItem(k) || 0; } catch (e) {} if (Date.now() - t > 60000) { try { sessionStorage.setItem(k, String(Date.now())); } catch (e) {} location.reload(); } }
+    });
+  }).catch(function () {});
+})();
+</script>
 </body>
 </html>

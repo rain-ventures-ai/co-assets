@@ -305,6 +305,37 @@
   function closePops() { ['clientPop', 'filterPop'].forEach(id => { $(id).hidden = true; }); $('btnFilter').setAttribute('aria-expanded', 'false'); }
   function placePop(pop) { if (window.matchMedia('(max-width: 760px)').matches) pop.style.top = (document.querySelector('header').getBoundingClientRect().bottom + 6) + 'px'; else pop.style.top = ''; }
 
+  // ---- keeping the app itself fresh -----------------------------------------------------------------------
+  const hashStr = s => { let x = 2166136261; for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619); } return (x >>> 0).toString(16).padStart(8, '0').slice(0, 6); };
+  const loadedVersion = () => window.__kbAssets ? hashStr(window.__kbAssets.css + window.__kbAssets.js) : 'unknown';
+  const revalidate = u => fetch(u, { cache: 'no-cache' }).then(r => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))));
+  let updateReady = false, lastUpdateCheck = Date.now();
+  async function checkForUpdate(force) {
+    if (updateReady || (!force && Date.now() - lastUpdateCheck < 120000)) return updateReady; lastUpdateCheck = Date.now();
+    try {
+      const [css, js] = await Promise.all([revalidate('board.css'), revalidate('board.js')]);
+      let changed = !!window.__kbAssets && (css !== window.__kbAssets.css || js !== window.__kbAssets.js);
+      if (!changed && window.__kbHtml) { const html = await revalidate(location.href); changed = html !== window.__kbHtml; }
+      if (changed) { updateReady = true; $('updateBar').hidden = false; }
+    } catch { /* offline or rate limited: try again next time */ }
+    return updateReady;
+  }
+  async function hardRefresh() {   // bypass every cache, then reload
+    toast('Updating to the latest version…');
+    const here = new URL(location.href), bare = here.origin + here.pathname, base = bare.replace(/[^/]*$/, '');
+    const urls = [...new Set([location.href, bare, base, base + 'board.css', base + 'board.js', base + 'theme.js'])];
+    await Promise.all(urls.map(u => fetch(u, { cache: 'reload' }).catch(() => {})));
+    try { if (window.caches) await Promise.all((await caches.keys()).map(k => caches.delete(k))); } catch {}
+    try { if (navigator.serviceWorker) await Promise.all((await navigator.serviceWorker.getRegistrations()).map(r => r.unregister())); } catch {}
+    location.reload();
+  }
+  window.kbUpdate = { check: () => checkForUpdate(true), refresh: hardRefresh, version: loadedVersion };
+  $('updNow').onclick = hardRefresh; $('updLater').onclick = () => { $('updateBar').hidden = true; setTimeout(() => { updateReady = false; }, 30 * 60000); };
+  $('sUpdate').onclick = hardRefresh;
+  setInterval(() => { if (!document.hidden) checkForUpdate(); }, 10 * 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
+  setTimeout(() => checkForUpdate(), 20000);
+
   // ---- unread markers: per browser, remembered in localStorage (no repo writes) --------------------------------
   // seen[taskId] = { c: newest comment time seen, h: newest history time seen }. A comment is unread if someone else posted it after c;
   // a card has "changed" if someone else (or an agent) logged a history entry after h. First run on a browser marks everything read.
@@ -582,6 +613,7 @@
     const pr = el('div', 'c-prio'); if (t.priority) pr.append(el('span', 'pr ' + t.priority, cap(t.priority)));
     const more = el('div', 'c-more'); [chipTodo(t), chipComments(t), chipAgent(t)].forEach(x => x && more.append(x));
     const edit = el('button', 'ico', '✏️'); edit.title = 'Open task'; edit.setAttribute('aria-label', 'Open task'); edit.onclick = () => openCard(t.id); more.append(edit);
+    const bot = el('button', 'ico', '🤖'); bot.title = 'Copy instructions for an agent to work on this task'; bot.setAttribute('aria-label', 'Copy agent instructions for this task'); bot.onclick = () => copyText(agentPrompt(t), 'Task instructions copied for an agent'); more.append(bot);
     row.append(c0, task, desc, ppl, lab, due, pr, more); return row;
   }
 
@@ -888,6 +920,7 @@
     if (focus === 'comments') setTimeout(() => { $('cmSec').scrollIntoView({ block: 'start' }); $('cmText').focus(); }, 60);
   }
   $('cClose').onclick = () => $('dlgCard').close();
+  $('cAgent').onclick = () => { const t = taskNow(); if (t) copyText(agentPrompt(t), 'Task instructions copied for an agent'); };
   $('dlgCard').addEventListener('close', () => { commitTitle(); closeDesc(true); commentsFor = null; });   // closing never loses typed text
   $('cDelete').onclick = () => { const id = editing; if (!confirm(`Delete "${titleOf(id)}"?`)) return; const title = titleOf(id); editingDesc = false; $('dlgCard').close(); mutate(n => { n.tasks = n.tasks.filter(x => x.id !== id); }, `Delete task: ${title}`, [id]); };
 
@@ -898,7 +931,7 @@
   }
   document.querySelectorAll('.stabs button').forEach(b => { b.onclick = () => settingsTab(b.dataset.tab); });
   $('sClose').onclick = $('sDone').onclick = () => $('dlgSettings').close();
-  $('btnSettings').onclick = () => { const c = cfg(); settingsTab(c.token ? 'general' : 'conn'); $('sRepo').value = c.repo; $('sBranch').value = c.branch; $('sPath').value = c.path; $('sMe').value = c.me; $('sToken').value = ''; $('sToken').placeholder = c.token ? '(token saved — leave blank to keep)' : 'github_pat_...'; $('dlgSettings').showModal(); };
+  $('btnSettings').onclick = () => { const c = cfg(); $('sVer').textContent = loadedVersion(); settingsTab(c.token ? 'general' : 'conn'); $('sRepo').value = c.repo; $('sBranch').value = c.branch; $('sPath').value = c.path; $('sMe').value = c.me; $('sToken').value = ''; $('sToken').placeholder = c.token ? '(token saved — leave blank to keep)' : 'github_pat_...'; $('dlgSettings').showModal(); };
   const patUrl = () => { const owner = ($('sRepo').value.trim().split('/')[0] || '');
     const q = new URLSearchParams({ name: 'Team Board', description: 'Team board: read and write tasks.json', expires_in: '90', contents: 'write' });
     if (/^[\w.-]+$/.test(owner)) q.set('target_name', owner);

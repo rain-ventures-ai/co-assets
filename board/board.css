@@ -279,7 +279,10 @@ dialog.drawer[open] { display: flex; animation: slidein .22s ease; }
 .pchip .av { margin: 0; border: 0; width: 22px; height: 22px; } .pchip.on { opacity: 1; background: var(--accent-soft); border-color: var(--accent); font-weight: 600; } .pchip:hover { opacity: 1; }
 .pillinput { border-radius: 999px; padding: 3px 12px; background: var(--panel); border-color: transparent; font-size: 13px; width: auto !important; }
 .lx { border: 0; background: transparent; color: inherit; opacity: .6; padding: 0 4px; margin-left: 2px; font-size: 16px; line-height: 1; border-radius: 4px; cursor: pointer; } .lx:hover { opacity: 1; background: rgba(0,0,0,.12); }
-.tag.lchip { display: inline-flex; align-items: center; padding: 2px 4px 2px 10px; font-size: 12px; margin-right: 4px; }
+/* Drawer label chip = the board's .tag (same size, weight, colour); only the × is extra and never grows the chip */
+.tag.lchip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 3px 1px 9px; margin: 0 4px 4px 0; line-height: 1.5; }
+.tag.lchip .lx { position: relative; min-height: 0; width: 16px; height: 16px; padding: 0; margin: 0; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; }
+.tag.lchip .lx::after { content: ''; position: absolute; inset: -10px; } /* larger touch target, no visual growth */
 .addinline { border: 1px dashed var(--border); background: transparent; border-radius: 999px; padding: 3px 12px; font-size: 13px; width: 130px; } .addinline:focus { border-style: solid; border-color: var(--accent); background: var(--card); outline: 0; }
 .addinline.wide { width: 100%; border-radius: 8px; margin-top: 6px; padding: 7px 10px; }
 .dsec { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
@@ -308,7 +311,7 @@ button.small { padding: 2px 10px; font-size: 12px; }
   .pchip { padding: 6px 14px 6px 6px; } .pchip .av { width: 26px; height: 26px; }
   .addinline { padding: 8px 12px; width: 150px; } .addinline.wide { padding: 11px 12px; }
   .pillsel, .pillinput { min-height: 38px; } .cbtns button { min-height: 42px; } .composer textarea { min-height: 46px; }
-  .lx { padding: 6px 10px; } .linkrow .host { display: none; }
+  .linkrow .lx, .contact .lx { padding: 6px 10px; } .linkrow .host { display: none; }
 }
 /* ---- unread markers ------------------------------------------------------ */
 #btnUnread { position: relative; } #btnUnread.on { background: var(--accent-soft); border-color: var(--accent); }
@@ -428,3 +431,10 @@ header .badge { top: -6px; right: -6px; }
 .attnbtn:not(.on) .ic::after { content: ''; position: absolute; left: -3px; right: -3px; top: 50%; height: 2px; background: var(--muted); transform: rotate(-38deg); border-radius: 2px; }
 .attnbtn:not(.on) #attnN, .attnbtn:not(.on) .atx { text-decoration: line-through; font-weight: 500; }
 .attnbtn.on { color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, var(--card)); border: 1px solid var(--warn); }
+
+/* ---- update banner ------------------------------------------------------- */
+.updatebar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; background: var(--text); color: var(--bg); padding: 8px 10px 8px 16px; border-radius: 999px; box-shadow: 0 10px 30px rgba(0,0,0,.35); font-size: 13px; max-width: 94vw; }
+.updatebar[hidden] { display: none; } .updatebar button { border-radius: 999px; padding: 5px 14px; } .updatebar button:not(.primary) { background: transparent; color: inherit; border-color: color-mix(in srgb, var(--bg) 40%, transparent); }
+@media (max-width: 760px) { .updatebar { bottom: 10px; flex-wrap: wrap; justify-content: center; border-radius: 16px; } }
+
+.agentcopy { border-radius: 999px; padding: 3px 12px; } @media (max-width: 760px) { .agentcopy .atxt { display: none; } .agentcopy { min-width: 40px; min-height: 36px; } }
