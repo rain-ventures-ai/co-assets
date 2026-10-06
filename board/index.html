@@ -26,6 +26,8 @@
   button:hover:not(:disabled) { border-color: var(--accent); } button:disabled { opacity: .4; cursor: default; }
   button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   button.danger { color: var(--danger); }
+  .cfcard { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 8px 0; } .cfnote { color: var(--danger); font-size: 12px; margin: 4px 0; }
+  .cftable { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; } .cftable th, .cftable td { text-align: left; border-top: 1px solid var(--border); padding: 3px 6px; vertical-align: top; word-break: break-word; } .cftable th { color: var(--muted); font-weight: 600; } .cftable td:first-child, .cftable th:first-child { white-space: nowrap; word-break: normal; }
   #status { font-size: 12px; color: var(--muted); } #status.err { color: var(--danger); } #status.ok { color: var(--ok); }
   #board { flex: 1; display: flex; gap: 12px; padding: 14px 16px; overflow-x: auto; align-items: flex-start; }
   .col { background: var(--panel); border-radius: 6px; width: 310px; min-width: 270px; display: flex; flex-direction: column; max-height: 100%; }
@@ -77,6 +79,13 @@
   <button id="btnSettings">Settings</button>
 </header>
 <div id="board"></div>
+
+<dialog id="dlgConflict">
+  <h3 style="margin-top:0">This board changed while you were working</h3>
+  <p id="cfIntro" style="color:var(--muted);font-size:13px;margin-top:0"></p>
+  <div id="cfBody"></div>
+  <div class="actions"><button id="cfDiscard">Discard my change</button><button id="cfApply" class="primary">Apply my change anyway</button></div>
+</dialog>
 
 <dialog id="dlgSettings">
   <h3 style="margin-top:0">Connect to GitHub</h3>
@@ -234,10 +243,48 @@
     return (res.status === 409 || res.status === 422) ? 'conflict' : 'error:' + res.status;
   }
 
+  // ---- conflict detection: what you saw (base) vs what is on GitHub now (latest) vs your change ----
+  const IGNORE = new Set(['updated', 'updatedBy']);
+  const norm = t => { if (!t) return null; const o = {}; Object.keys(t).sort().forEach(k => { if (!IGNORE.has(k)) o[k] = t[k]; });
+    if (o.claim) { o.claim = Object.assign({}, o.claim); delete o.claim.heartbeat_at; } return JSON.stringify(o); }; // heartbeats alone are not a conflict
+  const byId = st => new Map(st.tasks.map(t => [t.id, t]));
+  const show = v => v == null ? '(none)' : typeof v === 'string' ? (v || '(empty)') : JSON.stringify(v);
+  function findConflicts(base, pre, post) {
+    const B = byId(base), P = byId(pre), A = byId(post), out = [];
+    new Set([...B.keys(), ...P.keys(), ...A.keys()]).forEach(id => {
+      const b = B.get(id), p = P.get(id), a = A.get(id);
+      const mine = norm(p) !== norm(a);                 // my change touches this card
+      const theirs = !!b && norm(b) !== norm(p);        // someone changed (or deleted) it since I loaded
+      if (mine && theirs) out.push({ id, b, p, a });
+    });
+    return out;
+  }
+  // Move/edit aimed at a card that someone else deleted: fn is a no-op, so detect it by id.
+  function deletedUnderMe(base, pre, ids) { const B = byId(base), P = byId(pre); return ids.filter(id => B.has(id) && !P.has(id)); }
+  function askConflict(list) {
+    return new Promise(res => {
+      const d = $('dlgConflict'), body = $('cfBody'); body.textContent = '';
+      $('cfIntro').textContent = `${list.length} card${list.length > 1 ? 's' : ''} you are changing ${list.length > 1 ? 'were' : 'was'} changed by someone else (or an agent) since you loaded the board.`;
+      list.forEach(({ b, p, a }) => {
+        const t = a || p || b, box = el('div', 'cfcard'); box.append(el('strong', null, t.title));
+        if (!p) box.append(el('div', 'cfnote', 'It was deleted by someone else.'));
+        const keys = [...new Set([...Object.keys(b || {}), ...Object.keys(p || {}), ...Object.keys(a || {})])].filter(k => !IGNORE.has(k)
+          && [b && b[k], p && p[k], a && a[k]].map(x => JSON.stringify(x === undefined ? null : x)).some((x, _, arr) => x !== arr[0]));
+        const tb = el('table', 'cftable'), hr = el('tr'); ['Field', 'You saw', 'Now on GitHub', 'After your change'].forEach(h => hr.append(el('th', null, h))); tb.append(hr);
+        keys.forEach(k => { if (k === 'claim') { const f = x => x && x.claim ? `${x.claim.agent} ${x.claim.status}${x.claim.note ? ': ' + x.claim.note : ''}` : '(none)'; const r = el('tr'); [k, f(b), f(p), f(a)].forEach(v => r.append(el('td', null, v))); tb.append(r); return; }
+          const r = el('tr'); [k, show(b && b[k]), show(p && p[k]), show(a && a[k])].forEach(v => r.append(el('td', null, v))); tb.append(r); });
+        box.append(tb); body.append(box);
+      });
+      const done = v => { d.close(); $('cfApply').onclick = $('cfDiscard').onclick = null; d.oncancel = null; res(v); };
+      $('cfApply').onclick = () => done('apply'); $('cfDiscard').onclick = () => done('discard'); d.oncancel = () => done('discard');
+      d.showModal();
+    });
+  }
+
   // Apply an edit to the LATEST file on GitHub (never overwrite with stale state); retry on a SHA conflict.
-  async function mutate(fn, message) {
+  async function mutate(fn, message, targetIds = []) {
     if (busy) { setStatus('Busy, try again', 'err'); return; }
-    busy = true; const before = clone(state);
+    busy = true; const before = clone(state); let resolved = false;
     try {
       const o = clone(state); fn(o); state = o; render(); // optimistic
       for (let i = 0; i < 4; i++) {
@@ -245,7 +292,19 @@
         if (!res.ok && res.status !== 404) { setStatus(`GitHub error ${res.status}`, 'err'); state = before; render(); return; }
         let latest = DEFAULT();
         if (res.ok) { const d = await res.json(); sha = d.sha; latest = normalise(JSON.parse(b64d(d.content))); } else sha = null;
-        fn(latest);
+        const pre = clone(latest); fn(latest);
+        if (!resolved) {
+          const gone = deletedUnderMe(before, pre, targetIds);
+          const conflicts = findConflicts(before, pre, latest);
+          if (gone.length && !conflicts.length) {
+            state = pre; render(); setStatus('That card was deleted by someone else; nothing changed', 'err'); return;
+          }
+          if (conflicts.length) {
+            setStatus('Waiting for your decision…', 'err');
+            if (await askConflict(conflicts) === 'discard') { state = pre; render(); setStatus('Kept the newer version; your change was discarded', 'ok'); return; }
+            resolved = true;
+          }
+        }
         const out = await save(latest, message);
         if (out === 'ok') { setStatus('Saved ' + new Date().toLocaleTimeString(), 'ok'); render(); return; }
         if (out !== 'conflict') { setStatus('Save failed (' + out + ')', 'err'); state = before; render(); return; }
@@ -349,8 +408,8 @@
     n.tasks.splice(at, 0, t);
   }
   const titleOf = id => (state.tasks.find(x => x.id === id) || {}).title || id;
-  const moveTo = (id, col) => mutate(n => place(n, id, col, null), `Move "${titleOf(id)}" to ${col}`);
-  function dropOn(e, col, beforeId) { const id = e.dataTransfer.getData('text/plain'); if (!id || id === beforeId) return; mutate(n => place(n, id, col, beforeId), `Move "${titleOf(id)}" to ${col}`); }
+  const moveTo = (id, col) => mutate(n => place(n, id, col, null), `Move "${titleOf(id)}" to ${col}`, [id]);
+  function dropOn(e, col, beforeId) { const id = e.dataTransfer.getData('text/plain'); if (!id || id === beforeId) return; mutate(n => place(n, id, col, beforeId), `Move "${titleOf(id)}" to ${col}`, [id]); }
   function addTask(title, col) {
     const fc = $('fClient').value, w = $('fWho').value;
     const mine = me() && state.people.some(p => p.github.toLowerCase() === me().toLowerCase()) ? [state.people.find(p => p.github.toLowerCase() === me().toLowerCase()).github] : [];
@@ -403,11 +462,11 @@
       Object.assign(t, { title: v.title, client: v.client, priority: v.priority, due: v.due, assignees: v.assignees, labels: v.labels, details: v.details, links: v.links, contacts: v.contacts, linked_issue: v.issue, linked_pr: v.pr }); stamp(t);
       v.labels.forEach(l => { if (!n.labels.some(x => x.name === l)) n.labels.push({ name: l, color: '#6b778c' }); });
       if (t.column !== v.column) place(n, id, v.column, null);
-    }, `Edit task: ${v.title}`);
+    }, `Edit task: ${v.title}`, [id]);
   };
-  $('cDelete').onclick = () => { const id = editing; if (!confirm(`Delete "${titleOf(id)}"?`)) return; const title = titleOf(id); $('dlgCard').close(); mutate(n => { n.tasks = n.tasks.filter(x => x.id !== id); }, `Delete task: ${title}`); };
-  $('cStuck').onclick = () => { const id = editing; $('dlgCard').close(); mutate(n => { const t = n.tasks.find(x => x.id === id); if (t && t.claim) { t.claim.status = 'stuck'; t.claim.note = (t.claim.note ? t.claim.note + ' | ' : '') + `marked stuck by ${me() || 'human'}`; stamp(t); } }, `Mark stuck: ${titleOf(id)}`); };
-  $('cRelease').onclick = () => { const id = editing; if (!confirm('Release the agent claim? The agent session may still be running.')) return; $('dlgCard').close(); mutate(n => { const t = n.tasks.find(x => x.id === id); if (t) { t.claim = null; stamp(t); } }, `Release claim: ${titleOf(id)}`); };
+  $('cDelete').onclick = () => { const id = editing; if (!confirm(`Delete "${titleOf(id)}"?`)) return; const title = titleOf(id); $('dlgCard').close(); mutate(n => { n.tasks = n.tasks.filter(x => x.id !== id); }, `Delete task: ${title}`, [id]); };
+  $('cStuck').onclick = () => { const id = editing; $('dlgCard').close(); mutate(n => { const t = n.tasks.find(x => x.id === id); if (t && t.claim) { t.claim.status = 'stuck'; t.claim.note = (t.claim.note ? t.claim.note + ' | ' : '') + `marked stuck by ${me() || 'human'}`; stamp(t); } }, `Mark stuck: ${titleOf(id)}`, [id]); };
+  $('cRelease').onclick = () => { const id = editing; if (!confirm('Release the agent claim? The agent session may still be running.')) return; $('dlgCard').close(); mutate(n => { const t = n.tasks.find(x => x.id === id); if (t) { t.claim = null; stamp(t); } }, `Release claim: ${titleOf(id)}`, [id]); };
 
   // ---- settings ---------------------------------------------------------------
   $('btnSettings').onclick = () => { const c = cfg(); $('sRepo').value = c.repo; $('sBranch').value = c.branch; $('sPath').value = c.path; $('sMe').value = c.me; $('sToken').value = ''; $('sToken').placeholder = c.token ? '(token saved — leave blank to keep)' : 'github_pat_...'; $('dlgSettings').showModal(); };
