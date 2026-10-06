@@ -83,7 +83,7 @@
   <label>Repository (owner/name)</label><input id="sRepo" placeholder="owner/repo">
   <div class="row">
     <div><label>Branch</label><input id="sBranch" placeholder="master"></div>
-    <div><label>File path</label><input id="sPath" placeholder="tasks.json"></div>
+    <div><label>File path</label><input id="sPath" placeholder="board/tasks.json"></div>
   </div>
   <label>Your GitHub username (recorded as the editor, and default assignee)</label><input id="sMe" placeholder="osouthgate">
   <label>Fine-grained personal access token</label><input id="sToken" type="password" autocomplete="off" placeholder="github_pat_...">
@@ -132,7 +132,7 @@
     del(k) { try { localStorage.removeItem(k); } catch {} }
   };
   const cfg = () => ({
-    repo: LS.get('kb_repo', ''), branch: LS.get('kb_branch', 'master'), path: LS.get('kb_path', 'tasks.json'),
+    repo: LS.get('kb_repo', ''), branch: LS.get('kb_branch', 'master'), path: LS.get('kb_path', 'board/tasks.json'),
     token: LS.get('kb_token'), me: LS.get('kb_me', ''), api: LS.get('kb_api', 'https://api.github.com') // api override is for local testing only
   });
   // Optional first-run prefill from the link: ?repo=owner/name&branch=main&path=tasks.json (never the token)
@@ -193,7 +193,7 @@
     if (!quiet) setStatus('Loading…');
     try {
       const res = await gh('GET');
-      if (res.status === 404) { setStatus(`${c.path} not found`, 'err'); offerCreate(); return false; }
+      if (res.status === 404) { await diagnose404(); return false; }
       if (res.status === 401 || res.status === 403) { setStatus('Token rejected or lacks access', 'err'); return false; }
       if (!res.ok) { setStatus(`GitHub error ${res.status}`, 'err'); return false; }
       const data = await res.json(); sha = data.sha; state = normalise(JSON.parse(b64d(data.content))); lastSyncOk = true;
@@ -201,6 +201,23 @@
     } catch (e) { console.error(e); setStatus('Network or parse error', 'err'); return false; }
   }
 
+  // GitHub answers 404 both for a missing file and for a repo your token cannot see, so check which.
+  async function diagnose404() {
+    const c = cfg(), board = $('board'); board.textContent = ''; const box = el('div', 'empty');
+    let repoOk = false;
+    try { const r = await fetch(`${c.api}/repos/${c.repo}`, { cache: 'no-store', headers: { Authorization: `Bearer ${c.token}`, Accept: 'application/vnd.github+json' } }); repoOk = r.ok; } catch {}
+    if (!repoOk) {
+      setStatus('Repo not found / no access', 'err');
+      box.append(el('p', null, `Cannot see repository "${c.repo}" with this token.`), el('p', null, 'Check: (1) the repo name in Settings, (2) the token was created with "Only select repositories" including this repo (or the right owner), (3) Contents: Read and write, (4) the token has not expired.'));
+    } else {
+      setStatus(`${c.path} not found`, 'err');
+      box.append(el('p', null, `The repo is reachable, but "${c.path}" does not exist on branch "${c.branch}".`), el('p', null, 'Check the file path and branch in Settings (for our team board the path is board/tasks.json).'));
+      const b = el('button', null, 'Create a new empty board at this path…');
+      b.onclick = async () => { if (!confirm(`Create ${c.path} on ${c.branch} in ${c.repo}?`)) return; state = DEFAULT(); sha = null; await save(clone(state), 'Create board file'); render(); };
+      box.append(b);
+    }
+    board.append(box);
+  }
   function offerCreate() {
     const board = $('board'); board.textContent = ''; const box = el('div', 'empty');
     box.append(el('p', null, `${cfg().path} does not exist on ${cfg().branch} yet.`));
@@ -402,7 +419,7 @@
   $('sCancel').onclick = () => $('dlgSettings').close();
   $('sForget').onclick = () => { LS.del('kb_token'); $('dlgSettings').close(); state = DEFAULT(); sha = null; lastSyncOk = false; render(); setStatus('Token removed'); };
   $('sSave').onclick = () => {
-    LS.set('kb_repo', $('sRepo').value.trim()); LS.set('kb_branch', $('sBranch').value.trim() || 'master'); LS.set('kb_path', $('sPath').value.trim() || 'tasks.json'); LS.set('kb_me', $('sMe').value.trim().replace(/^@/, ''));
+    LS.set('kb_repo', $('sRepo').value.trim()); LS.set('kb_branch', $('sBranch').value.trim() || 'master'); LS.set('kb_path', $('sPath').value.trim() || 'board/tasks.json'); LS.set('kb_me', $('sMe').value.trim().replace(/^@/, ''));
     if ($('sToken').value.trim()) LS.set('kb_token', $('sToken').value.trim()); $('dlgSettings').close(); load();
   };
   $('btnRefresh').onclick = () => load();
