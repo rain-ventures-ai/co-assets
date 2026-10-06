@@ -50,7 +50,6 @@
     <p class="hint" style="margin-top:0">These apply straight away and are remembered in this browser.</p>
     <div><label for="sStyle">Card style</label><select id="sStyle"><option value="classic">Classic</option><option value="colorful">Colourful (client and urgency colours)</option></select></div>
     <div><label for="sTheme">Theme</label><select id="sTheme"><option value="auto">Auto (follows your device)</option><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="sand">Sand</option></select></div>
-    <div><label for="sMe">Your GitHub username</label><input id="sMe" placeholder="osouthgate" autocomplete="off"><div class="hint">Recorded as the author of your edits and comments, and used for unread markers and the default assignee.</div></div>
     <div><label>Unread markers</label><button id="sMarkAll" type="button">Mark all cards as read</button></div>
     <div class="actions"><button id="sDone" class="primary">Done</button></div>
   </div>
@@ -61,6 +60,8 @@
       <div><label for="sBranch">Branch</label><input id="sBranch" placeholder="master"></div>
       <div><label for="sPath">File path</label><input id="sPath" placeholder="board/tasks.json"></div>
     </div>
+    <label for="sMe">Your GitHub username</label><input id="sMe" placeholder="osouthgate" autocomplete="off">
+    <div class="hint">Recorded as the author of your edits and comments, and used for unread markers and the default assignee.</div>
     <label for="sToken">Fine-grained personal access token</label><input id="sToken" type="password" autocomplete="off" placeholder="github_pat_...">
     <div class="hint"><a id="patLink" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Create a fine-grained token on GitHub &rarr;</a> (the link pre-fills the name, expiry and <b>Contents: Read and write</b>). Choose <b>Only select repositories</b> and pick just the repo that holds your board file. If the repo belongs to an organisation, set <b>Resource owner</b> to that organisation. The token is kept only in this browser (localStorage) and is sent only to api.github.com.</div>
     <div class="actions"><button id="sForget" class="danger">Forget token</button><span class="spacer"></span><button id="sCancel">Cancel</button><button id="sSave" class="primary">Save &amp; connect</button></div>
