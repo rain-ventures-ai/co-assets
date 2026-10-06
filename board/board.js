@@ -26,7 +26,7 @@
   const b64d = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\s/g, '')), c => c.charCodeAt(0)));
   const clone = o => JSON.parse(JSON.stringify(o));
   const nowIso = () => new Date().toISOString();
-  const setStatus = (m, k = '') => { const s = $('status'); s.textContent = m; s.className = k; };
+  const setStatus = (m, k = '') => { const s = $('status'); s.textContent = m; s.className = k; const r = $('btnRefresh'); if (r) r.title = m + ' (click to reload)'; };
   const safeUrl = u => { try { const x = new URL(u); return (x.protocol === 'https:' || x.protocol === 'http:') ? x.href : null; } catch { return null; } };
 
   function linkify(parent, text) { // build DOM (no innerHTML): plain text plus safe http(s) links
@@ -257,12 +257,46 @@
   function renderLegend() {
     const box = $('legend'); box.textContent = ''; if (document.documentElement.dataset.style !== 'colorful') return;
     const used = [...new Set(state.tasks.map(t => t.client).filter(Boolean))]; const sel = $('fClient').value;
-    box.append(el('span', 'lgl', 'Left edge: client'));
-    used.forEach(cn => { const b = el('button', 'lgchip' + (sel === cn ? ' on' : ''), cn); b.style.setProperty('--cc', `hsl(${clientHue(cn)} 72% 52%)`); b.title = sel === cn ? 'Show all clients' : 'Show only ' + cn;
-      b.onclick = () => { $('fClient').value = sel === cn ? '' : cn; render(); }; box.append(b); });
-    box.append(el('span', 'lgsep'), el('span', 'lgl', 'Right edge: urgency'));
+    box.append(el('span', 'lgl', 'Card edges: client on the left, urgency on the right'));
+    box.append(el('span', 'lgsep'));
     URG.slice().reverse().forEach(u => { const s = el('span', 'lgchip static', u.label); s.style.setProperty('--cc', u.color); box.append(s); });
   }
+
+  // ---- top bar: client pills ranked by urgency then recency, as many as fit, the rest under "+N" --------------
+  function clientRank() {
+    const dc = doneColId(), names = [...new Set([...state.clients, ...state.tasks.map(t => t.client)].filter(Boolean))];
+    return names.map(n => { const ts = state.tasks.filter(t => t.client === n), open = ts.filter(t => t.column !== dc);
+      return { name: n, open: open.length, lvl: open.reduce((m, t) => Math.max(m, urgency(t).lvl), -1), rec: ts.reduce((m, t) => (t.updated > m ? t.updated : m), '') }; })
+      .sort((a, b) => b.lvl - a.lvl || (a.rec < b.rec ? 1 : a.rec > b.rec ? -1 : 0) || a.name.localeCompare(b.name));
+  }
+  const setClient = v => { $('fClient').value = v; closePops(); render(); };
+  function clientPill(c) {
+    const on = $('fClient').value === c.name, b = el('button', 'cpill' + (on ? ' on' : '')); b.type = 'button'; b.style.setProperty('--cc', `hsl(${clientHue(c.name)} 72% 52%)`); b.setAttribute('aria-pressed', String(on));
+    b.title = on ? 'Show all clients' : `Show only ${c.name} (${c.open} open)`; b.append(el('i', 'cdotc'), document.createTextNode(c.name)); if (c.open) b.append(el('span', 'cn', String(c.open)));
+    b.onclick = () => setClient(on ? '' : c.name); return b;
+  }
+  function renderTopbar() {
+    const box = $('clientBar'); if (!box || !state) return; box.textContent = '';
+    const total = state.tasks.filter(t => t.column !== doneColId()).length, sel = $('fClient').value;
+    const all = el('button', 'cpill all' + (sel ? '' : ' on'), 'All'); all.type = 'button'; all.setAttribute('aria-pressed', String(!sel)); all.title = 'Show all clients'; if (total) all.append(el('span', 'cn', String(total))); all.onclick = () => setClient(''); box.append(all);
+    let list = clientRank(); if (sel) list = [...list.filter(c => c.name === sel), ...list.filter(c => c.name !== sel)];
+    const shown = []; for (const c of list) { const b = clientPill(c); box.append(b); if (box.scrollWidth > box.clientWidth + 1) { b.remove(); break; } shown.push(b); }
+    let rest = list.slice(shown.length);
+    if (rest.length) {
+      const more = el('button', 'cpill more'); more.type = 'button'; more.setAttribute('aria-haspopup', 'true'); box.append(more);
+      const label = () => { more.textContent = `+${rest.length} ▾`; };
+      label(); while (box.scrollWidth > box.clientWidth + 1 && shown.length) { shown.pop().remove(); rest = list.slice(shown.length); label(); }
+      more.onclick = e => { e.stopPropagation(); const pop = $('clientPop'); if (!pop.hidden) { closePops(); return; } closePops();
+        pop.textContent = ''; rest.forEach(c => { const b = el('button', 'cmenu' + ($('fClient').value === c.name ? ' on' : '')); b.type = 'button'; b.style.setProperty('--cc', `hsl(${clientHue(c.name)} 72% 52%)`);
+          b.append(el('i', 'cdotc'), el('span', 'nm', c.name), el('span', 'cn', c.open ? String(c.open) : '')); b.onclick = () => setClient(c.name); pop.append(b); });
+        pop.style.left = Math.max(0, more.offsetLeft - 10) + 'px'; pop.hidden = false; };
+    }
+    const pq = $('peopleQ'); pq.textContent = ''; const w = $('fWho').value;
+    state.people.forEach(p => { const on = w === p.github, b = el('button', 'pq' + (on ? ' on' : '')); b.type = 'button'; b.setAttribute('aria-pressed', String(on)); b.title = on ? 'Show everyone' : `Only @${p.github}'s tasks`;
+      b.append(avatar(p.github)); b.onclick = () => { $('fWho').value = on ? '' : p.github; render(); }; pq.append(b); });
+  }
+  function closePops() { ['clientPop', 'filterPop'].forEach(id => { $(id).hidden = true; }); $('btnFilter').setAttribute('aria-expanded', 'false'); }
+  function placePop(pop) { if (window.matchMedia('(max-width: 760px)').matches) pop.style.top = (document.querySelector('header').getBoundingClientRect().bottom + 6) + 'px'; else pop.style.top = ''; }
 
   // ---- unread markers: per browser, remembered in localStorage (no repo writes) --------------------------------
   // seen[taskId] = { c: newest comment time seen, h: newest history time seen }. A comment is unread if someone else posted it after c;
@@ -299,7 +333,7 @@
   const labelColor = n => (state.labels.find(l => l.name === n) || {}).color || '#6b778c';
 
   function render() {
-    fillSelect($('fClient'), state.clients.map(c => [c, c]), 'All');
+    fillSelect($('fClient'), [...new Set([...state.clients, ...state.tasks.map(t => t.client)].filter(Boolean))].map(c => [c, c]), 'All');
     fillSelect($('fWho'), [...state.people.map(p => [p.github, '@' + p.github]), ['__none', 'Unassigned'], ['__agent', 'Claimed by an agent']], 'Everyone');
     fillSelect($('fLabel'), state.labels.map(l => [l.name, l.name]), 'All');
     if ($('dlgCard').open && editing) markSeen(editing);
@@ -404,16 +438,14 @@
   }
 
   function renderStats() {
-    const open = state.tasks.filter(t => t.column !== 'done'), attn = open.filter(needsAttention).length;
-    const agents = state.tasks.filter(t => t.claim && ['running', 'stale', 'blocked', 'stuck'].includes(claimState(t.claim))).length;
-    const box = $('stats'); box.textContent = '';
-    const chip = (txt, cls) => box.append(el('span', 'stat' + (cls ? ' ' + cls : ''), txt));
-    chip(`${open.length} open`); if (agents) chip(`${agents} with an agent`, 'agent'); if (attn) chip(`${attn} need attention`, 'warn');
+    const attn = state.tasks.filter(t => t.column !== doneColId() && needsAttention(t)).length;
+    $('btnAttn').hidden = !attn; $('attnN').textContent = attn ? String(attn) : ''; $('btnAttn').classList.toggle('on', $('fAttn').checked); $('attnCount').textContent = attn ? `(${attn})` : '';
     const fresh = state.tasks.filter(isFresh).length, bell = $('btnUnread'), bd = $('unreadBadge');
     bd.textContent = fresh > 99 ? '99+' : String(fresh); bd.hidden = !fresh; bell.classList.toggle('on', freshOnly);
     bell.title = fresh ? `${fresh} card${fresh > 1 ? 's' : ''} with new comments or changes${freshOnly ? ' (showing only these; click to show all)' : ' (click to show only these)'}` : (cfg().me ? 'Nothing new' : 'Set your GitHub username in Settings to see unread markers');
     document.title = (fresh ? `(${fresh}) ` : '') + 'Team Board';
-    if (chip && fresh) chip(`${fresh} new`, 'agent');
+    const nf = ['fWho', 'fLabel', 'fPrio'].filter(id => $(id).value).length + ($('fAttn').checked ? 1 : 0) + ($('fHideDone').checked ? 1 : 0) + (freshOnly ? 1 : 0), fb = $('filterBadge');
+    fb.textContent = String(nf); fb.hidden = !nf; renderTopbar();
   }
 
   // Recognise GitHub URLs (any repo) so they read as "owner/repo#12" chips on the card
@@ -875,7 +907,12 @@
   $('sMarkAll').onclick = () => { markAllSeen(); render(); toast('All cards marked as read'); };
   $('btnRefresh').onclick = () => load();
   $('btnAgent').onclick = () => copyText(agentPrompt(null), 'Board instructions copied for an agent');
-  $('btnFilters').onclick = () => { const o = document.body.classList.toggle('filters-open'); $('btnFilters').setAttribute('aria-expanded', String(o)); };
+  $('btnFilter').onclick = e => { e.stopPropagation(); const pop = $('filterPop'), open = pop.hidden; closePops(); if (open) { placePop(pop); pop.hidden = false; $('btnFilter').setAttribute('aria-expanded', 'true'); } };
+  $('filterPop').addEventListener('click', e => e.stopPropagation()); $('clientPop').addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', closePops); document.addEventListener('keydown', e => { if (e.key === 'Escape') closePops(); });
+  $('btnAttn').onclick = () => { $('fAttn').checked = !$('fAttn').checked; render(); };
+  $('fClear').onclick = () => { ['fClient', 'fWho', 'fLabel', 'fPrio'].forEach(id => { $(id).value = ''; }); $('fAttn').checked = false; $('fHideDone').checked = false; freshOnly = false; closePops(); render(); };
+  { let rz = null; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(renderTopbar, 120); }); }
   ['fClient', 'fWho', 'fLabel', 'fPrio', 'fAttn', 'fHideDone'].forEach(i => $(i).addEventListener('change', render));
   const canPoll = () => !busy && !document.hidden && !document.querySelector('dialog[open]:not(#dlgCard)') && !document.querySelector('.card.dragging') && lastSyncOk;
   setInterval(() => { if (canPoll()) load(true); }, 30000);   // conditional (ETag) so unchanged polls are 304s

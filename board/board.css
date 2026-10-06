@@ -373,3 +373,38 @@ dialog.settings { max-width: 520px; }
 .stabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
 dialog.settings [role="tabpanel"][hidden] { display: none; }
 @media (max-width: 760px) { .stabs button { min-height: 44px; flex: 1; } }
+
+/* ---- top bar v2: logo, views, client pills, quick people, filters ---------------------------------------- */
+header { flex-wrap: nowrap; gap: 10px; padding: 8px 14px; } .hbreak { display: none; }
+header .logo { flex: 0 0 auto; width: 32px; height: 32px; font-size: 17px; border-radius: 9px; }
+.seg { flex: 0 0 auto; }
+.clientwrap { position: relative; flex: 1 1 0; min-width: 0; }
+.clientbar { display: flex; gap: 6px; overflow: hidden; align-items: center; min-width: 0; padding: 2px 0; }
+.cpill { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; background: var(--panel); border: 1px solid transparent; font-size: 13px; white-space: nowrap; color: var(--text); }
+.cpill:hover { border-color: var(--cc, var(--accent)); } .cpill .cn { font-size: 11px; color: var(--muted); } .cpill .cdotc, .cmenu .cdotc { width: 9px; height: 9px; border-radius: 50%; background: var(--cc, var(--muted)); flex: 0 0 auto; }
+.cpill.on { background: color-mix(in srgb, var(--cc, var(--accent)) 16%, var(--card)); border-color: var(--cc, var(--accent)); font-weight: 600; } .cpill.all.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.cpill.more { color: var(--muted); }
+.popover { position: absolute; z-index: 30; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 14px 36px rgba(0,0,0,.28); padding: 8px; min-width: 220px; }
+.popover[hidden] { display: none; }
+.clientpop { top: calc(100% + 6px); max-height: 60vh; overflow-y: auto; }
+.cmenu { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; border-radius: 8px; } .cmenu:hover, .cmenu.on { background: color-mix(in srgb, var(--cc) 14%, transparent); } .cmenu .nm { flex: 1; } .cmenu .cn { font-size: 11px; color: var(--muted); }
+.peopleq { display: flex; flex: 0 0 auto; } .pq { border: 2px solid transparent; background: transparent; padding: 0; border-radius: 50%; margin-left: -4px; opacity: .65; } .pq .av { margin: 0; border: 2px solid var(--header); width: 28px; height: 28px; font-size: 10.5px; } .pq:hover { opacity: 1; z-index: 1; } .pq.on { opacity: 1; border-color: var(--accent); z-index: 2; }
+.attnbtn { flex: 0 0 auto; display: inline-flex; gap: 4px; align-items: center; color: var(--warn); font-weight: 700; background: color-mix(in srgb, var(--warn) 14%, var(--card)); } .attnbtn.on { border-color: var(--warn); }
+.popwrap { position: relative; flex: 0 0 auto; } #btnFilter { position: relative; } #btnFilter .tx { display: inline; }
+.filterpop { right: 0; top: calc(100% + 8px); width: 270px; padding: 12px; } .filterpop label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); margin-bottom: 10px; } .filterpop label.chk { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 13px; } .filterpop select { font-size: 13px; }
+.popfoot { display: flex; justify-content: flex-end; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px; }
+#status { flex: 0 0 auto; } #status.ok { display: none; } #status.err { color: var(--danger); font-weight: 600; }
+header .badge { top: -6px; right: -6px; }
+@media (max-width: 1100px) { .seg .vt { display: none; } .seg button { padding: 4px 9px; } #btnFilter .tx { display: none; } }
+@media (max-width: 760px) {
+  header { flex-wrap: wrap; gap: 6px 8px; padding: 6px 10px; }
+  header .logo { display: none; } .seg { order: 1; } #btnUnread { order: 2; margin-left: auto; } #btnAgent { order: 3; } #btnRefresh { order: 4; } #btnSettings { order: 5; } .hbreak { display: block; order: 6; flex-basis: 100%; height: 0; }
+  .clientwrap { order: 7; } .peopleq { display: none; } .attnbtn { order: 8; } .popwrap { order: 9; } #status { order: 12; flex-basis: 100%; font-size: 11.5px; }
+  header { gap: 6px; } .seg button { min-height: 40px; min-width: 38px; padding: 6px 8px; } header button { min-height: 40px; min-width: 40px; padding: 4px 6px; } header .seg button { min-width: 38px; }
+  .popover { position: fixed; left: 8px; right: 8px; top: 120px; width: auto; max-width: none; } .clientpop { left: 8px !important; } .filterpop { right: 8px; width: auto; }
+  .filterpop select, .filterpop input { min-height: 42px; font-size: 16px; } .filterpop label.chk { min-height: 40px; } .cmenu { min-height: 44px; }
+  .cpill { padding: 7px 12px; }
+}
+.filterpop label { align-items: stretch !important; text-align: left; } .filterpop label.chk { align-items: center !important; }
+.seg button.on .vt { display: inline; }
+@media (max-width: 760px) { .seg button.on .vt { display: none; } }

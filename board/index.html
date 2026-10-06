@@ -9,23 +9,32 @@
 </head>
 <body>
 <header>
-  <h1><span class="logo">▦</span> Team Board</h1><span id="stats" class="stats"></span>
+  <div class="logo" title="Team Board" aria-label="Team Board">▦</div>
   <div id="viewSw" class="seg" role="group" aria-label="View"><button data-view="board" title="Board"><span class="vi">▦</span><span class="vt"> Board</span></button><button data-view="list" title="List"><span class="vi">☰</span><span class="vt"> List</span></button><button data-view="cal" title="Calendar"><span class="vi">📅</span><span class="vt"> Calendar</span></button><button data-view="sched" title="Schedule"><span class="vi">🗓</span><span class="vt"> Schedule</span></button></div>
-  <button id="btnFilters" class="mobile-only" aria-expanded="false" aria-controls="filters" aria-label="Filters"><span class="ic">⏷</span><span class="tx"> Filters</span></button>
-  <div id="filters" class="filters">
-  <label>Client <select id="fClient"></select></label>
-  <label>Assignee <select id="fWho"></select></label>
-  <label>Label <select id="fLabel"></select></label>
-  <label>Priority <select id="fPrio"><option value="">All</option><option>high</option><option>medium</option><option>low</option></select></label>
-  <label><input type="checkbox" id="fAttn"> Needs attention</label>
-  <label><input type="checkbox" id="fHideDone"> Hide done</label>
+  <div class="clientwrap">
+    <div id="clientBar" class="clientbar" role="group" aria-label="Filter by client"></div>
+    <div id="clientPop" class="popover clientpop" hidden></div>
   </div>
-  <span class="spacer desktop-only"></span>
+  <select id="fClient" hidden aria-hidden="true"></select>
+  <div id="peopleQ" class="peopleq" role="group" aria-label="Filter by person"></div>
+  <button id="btnAttn" class="attnbtn" hidden title="Cards that are overdue or have a stale, stuck or blocked agent: click to show only these" aria-label="Needs attention"><span class="ic">⚠️</span><span id="attnN"></span></button>
+  <div class="popwrap">
+    <button id="btnFilter" aria-haspopup="true" aria-expanded="false" aria-controls="filterPop" aria-label="Filters" title="Filters"><span class="ic">🔎</span><span class="tx"> Filters</span><span id="filterBadge" class="badge" hidden>0</span></button>
+    <div id="filterPop" class="popover filterpop" hidden>
+      <label>Assignee <select id="fWho"></select></label>
+      <label>Label <select id="fLabel"></select></label>
+      <label>Priority <select id="fPrio"><option value="">All</option><option>high</option><option>medium</option><option>low</option></select></label>
+      <label class="chk"><input type="checkbox" id="fAttn"> Needs attention <span id="attnCount" class="muted"></span></label>
+      <label class="chk"><input type="checkbox" id="fHideDone"> Hide done</label>
+      <div class="popfoot"><button id="fClear" type="button">Clear filters</button></div>
+    </div>
+  </div>
+  <div class="hbreak"></div>
   <span id="status">Not connected</span>
   <button id="btnAgent" title="Copy instructions for an AI agent: the board, how to claim and update tasks, and the skill link" aria-label="Copy for agent"><span class="ic">🤖</span><span class="tx"> Copy for agent</span></button>
   <button id="btnUnread" aria-label="Unread" title="Nothing new"><span class="ic">🔔</span><span id="unreadBadge" class="badge" hidden>0</span></button>
   <button id="btnRefresh" title="Reload from GitHub" aria-label="Refresh"><span class="ic">🔄</span><span class="tx"> Refresh</span></button>
-  <button id="btnSettings" aria-label="Settings"><span class="ic">⚙️</span><span class="tx"> Settings</span></button>
+  <button id="btnSettings" aria-label="Settings" title="Settings"><span class="ic">⚙️</span><span class="tx"> Settings</span></button>
 </header>
 <div id="legend" class="legend" aria-label="Colour key"></div>
 <nav id="tabs" aria-label="Columns"></nav>
