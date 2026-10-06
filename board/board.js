@@ -447,7 +447,7 @@
   function renderStats() {
     const attn = state.tasks.filter(t => t.column !== doneColId() && needsAttention(t)).length;
     const attnTasks = state.tasks.filter(t => t.column !== doneColId() && needsAttention(t)), on = $('fAttn').checked, ab = $('btnAttn');
-    ab.hidden = !attn && !on; $('attnN').textContent = String(attn); $('attnT').textContent = on ? ' needs attention ✕' : (attn === 1 ? ' needs attention' : ' need attention'); ab.classList.toggle('on', on); $('attnCount').textContent = attn ? `(${attn})` : '';
+    ab.hidden = !attn && !on; $('attnN').textContent = String(attn); $('attnT').textContent = on ? ' needs attention ✕' : (attn === 1 ? ' needs attention' : ' need attention'); $('attnS').textContent = on ? ' attention ✕' : ' attention'; ab.classList.toggle('on', on); $('attnCount').textContent = attn ? `(${attn})` : '';
     ab.title = (on ? 'Showing only cards that need attention: click to show everything.\n' : 'Overdue, or an agent claim that is stale, stuck or blocked. Click to show only these.\n') + attnTasks.slice(0, 4).map(t => '• ' + t.title).join('\n') + (attnTasks.length > 4 ? `\n…and ${attnTasks.length - 4} more` : '');
     const fresh = state.tasks.filter(isFresh).length, bell = $('btnUnread'), bd = $('unreadBadge');
     bd.textContent = fresh > 99 ? '99+' : String(fresh); bd.hidden = !fresh; bell.classList.toggle('on', freshOnly);
