@@ -411,7 +411,11 @@
     c.addEventListener('dragover', e => e.preventDefault());
     c.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); dropOn(e, t.column, t.id); });
     c.addEventListener('dblclick', () => openCard(t.id));
-    const top = el('div', 'top'); if (t.priority) top.append(el('span', 'prio ' + t.priority, t.priority)); c.append(top);
+    const top = el('div', 'top'); if (t.priority) top.append(el('span', 'prio ' + t.priority, t.priority)); top.append(el('span', 'spacer'));
+    const edit = el('button', 'ico', '✏️'), bot = el('button', 'ico', '🤖');
+    edit.title = 'Edit task'; edit.setAttribute('aria-label', 'Edit task'); edit.onclick = () => openCard(t.id);
+    bot.title = 'Copy instructions for an agent to work on this task'; bot.setAttribute('aria-label', 'Copy agent instructions for this task'); bot.onclick = () => copyText(agentPrompt(t), 'Task instructions copied for an agent');
+    top.append(edit, bot); c.append(top);
     c.append(el('div', 't', t.title));
     if (t.details) c.append(el('div', 'n', t.details));
     const tags = el('div', 'tags');
@@ -441,11 +445,9 @@
     }
     const cols = state.columns, prev = cols[ci - 1], next = cols[ci + 1];
     const mv = el('div', 'moves'), left = el('button', 'mv', '◀ ' + (prev ? prev.name : '')), right = el('button', 'mv', (next ? next.name : '') + ' ▶');
-    const edit = el('button', null, 'Edit'), bot = el('button', 'agentbtn', '🤖');
     left.title = 'Move left'; right.title = 'Move right'; left.disabled = !prev; right.disabled = !next;
-    left.onclick = () => moveTo(t.id, prev.id); right.onclick = () => moveTo(t.id, next.id); edit.onclick = () => openCard(t.id);
-    bot.title = 'Copy instructions for an agent to work on this task'; bot.setAttribute('aria-label', 'Copy agent instructions for this task'); bot.onclick = () => copyText(agentPrompt(t), 'Task instructions copied for an agent');
-    mv.append(left, right, edit, bot); c.append(mv); return c;
+    left.onclick = () => moveTo(t.id, prev.id); right.onclick = () => moveTo(t.id, next.id);
+    mv.append(left, right); c.append(mv); return c;
   }
 
   function place(n, id, colId, beforeId) {

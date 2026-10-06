@@ -75,7 +75,8 @@ header #btnAgent, header #btnRefresh, header #btnSettings, header #btnFilters { 
 .card { position: relative; background: var(--card); border-radius: 8px; padding: 10px 12px 9px; margin-bottom: 9px; box-shadow: var(--shadow); cursor: grab; border: 1px solid var(--border); transition: box-shadow .15s, transform .15s, background .15s; }
 .card:hover { box-shadow: var(--shadow-hover); background: var(--card-hover); transform: translateY(-1px); }
 .card.dragging { opacity: .35; transform: rotate(1.5deg); }
-.card .top { display: flex; gap: 6px; margin-bottom: 4px; } .card .top:empty { display: none; }
+.card .top { display: flex; align-items: center; gap: 2px; margin-bottom: 4px; min-height: 26px; }
+.ico { border: 0; background: transparent; padding: 2px 6px; font-size: 14px; line-height: 1; border-radius: 6px; opacity: .7; } .ico:hover { opacity: 1; background: var(--panel); }
 .prio { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; padding: 1px 7px; border-radius: 4px; }
 .prio.high { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
 .prio.medium { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
@@ -89,10 +90,9 @@ header #btnAgent, header #btnRefresh, header #btnSettings, header #btnFilters { 
 .chip { color: var(--muted); text-decoration: none; padding: 1px 6px; border-radius: 5px; background: var(--panel); } a.chip { color: var(--accent); } a.chip.gh { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; } a.chip.pr { color: var(--ok); } a.chip:hover { text-decoration: underline; }
 .chip.late { background: var(--danger); color: #fff; font-weight: 600; }
 .av { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 9.5px; font-weight: 700; color: #fff; background: hsl(var(--h, 210) 55% 45%); margin-left: -4px; border: 2px solid var(--card); }
-.moves { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border); }
-.moves button { padding: 3px 9px; font-size: 12px; white-space: nowrap; }
-.moves .mv { flex: 1 1 40%; min-width: 0; white-space: normal; line-height: 1.2; }
-.moves .agentbtn { padding: 3px 8px; }
+.moves { display: flex; gap: 6px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border); }
+.moves .mv { flex: 1 1 0; min-width: 0; padding: 4px 6px; font-size: 12px; line-height: 1.25; white-space: normal; }
+.moves .mv:last-child { text-align: right; }
 
 /* ---- agent claim --------------------------------------------------------- */
 .claim { margin-top: 8px; font-size: 11.5px; padding: 5px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); }
@@ -150,7 +150,7 @@ dialog input:not([type=checkbox]), dialog textarea, dialog select { width: 100%;
   .col.active { display: flex; }
   .col h2 { display: none; } .cards { padding: 0; overflow: visible; }
   .card { padding: 12px 13px 11px; cursor: default; } .card .t { font-size: 15px; }
-  .moves button { min-height: 40px; font-size: 13px; padding: 4px 11px; } .moves .agentbtn { min-width: 44px; }
+  .moves .mv { min-height: 42px; font-size: 13px; } .ico { min-width: 40px; min-height: 40px; font-size: 18px; margin: -6px 0; }
   .add { padding: 10px 0; border-top: 0; } .add input, .add button { min-height: 44px; }
   .av { width: 26px; height: 26px; font-size: 10.5px; }
   dialog { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; border: 0; padding: 16px 14px 24px; }
