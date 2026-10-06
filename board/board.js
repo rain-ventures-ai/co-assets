@@ -538,9 +538,8 @@
   document.addEventListener('visibilitychange', () => { if (canPoll()) load(true); });  // catch up as soon as the tab is shown again
   setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) render(); }, 60000); // refresh "ago" and stale flags
 
-  $('themeSel').value = window.kbTheme ? window.kbTheme.get() : 'auto';
-  $('themeSel').onchange = e => { window.kbTheme && window.kbTheme.set(e.target.value); $('sTheme').value = e.target.value; };
-  $('sTheme').value = $('themeSel').value; $('sTheme').onchange = e => { window.kbTheme && window.kbTheme.set(e.target.value); $('themeSel').value = e.target.value; };
+  $('sTheme').value = window.kbTheme ? window.kbTheme.get() : 'auto';
+  $('sTheme').onchange = e => window.kbTheme && window.kbTheme.set(e.target.value);
   render();
   if (cfg().token) load(); else { setStatus('Not connected. Open Settings.', 'err'); $('btnSettings').click(); }
 })();

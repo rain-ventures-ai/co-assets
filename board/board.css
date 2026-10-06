@@ -52,9 +52,10 @@ header h1 { font-size: 17px; margin: 0; display: flex; align-items: center; gap:
 header label { font-size: 12px; color: var(--muted); display: flex; gap: 5px; align-items: center; }
 header select { padding: 4px 6px; font-size: 13px; }
 #status { font-size: 12px; color: var(--muted); } #status.err { color: var(--danger); } #status.ok { color: var(--ok); }
-#themeSel { padding: 4px 6px; font-size: 13px; }
-.filters { display: contents; } .mobile-only, .mobile-only-block { display: none; } .ic { display: none; } #tabs { display: none; }
-#btnAgent { white-space: nowrap; }
+/* header actions are small icon buttons; labels live in the tooltips */
+header .ic { font-size: 15px; line-height: 1; } header .tx { display: none; }
+header #btnAgent, header #btnRefresh, header #btnSettings, header #btnFilters { padding: 4px 8px; min-width: 34px; }
+.filters { display: contents; } .mobile-only, .mobile-only-block { display: none; } #tabs { display: none; }
 #toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px); background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 999px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 50; max-width: 92vw; text-align: center; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); } #toast.bad { background: var(--danger); color: #fff; }
 

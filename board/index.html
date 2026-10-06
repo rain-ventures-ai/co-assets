@@ -21,10 +21,9 @@
   </div>
   <span class="spacer desktop-only"></span>
   <span id="status">Not connected</span>
-  <select id="themeSel" title="Theme" aria-label="Theme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="sand">Sand</option></select>
-  <button id="btnAgent" class="primary" title="Copy instructions for an AI agent: the board, how to claim and update tasks, and the skill link" aria-label="Copy for agent"><span class="ic">🤖</span><span class="tx"> Copy for agent</span></button>
-  <button id="btnRefresh" title="Reload from GitHub" aria-label="Refresh"><span class="ic">↻</span><span class="tx"> Refresh</span></button>
-  <button id="btnSettings" aria-label="Settings"><span class="ic">⚙</span><span class="tx"> Settings</span></button>
+  <button id="btnAgent" title="Copy instructions for an AI agent: the board, how to claim and update tasks, and the skill link" aria-label="Copy for agent"><span class="ic">🤖</span><span class="tx"> Copy for agent</span></button>
+  <button id="btnRefresh" title="Reload from GitHub" aria-label="Refresh"><span class="ic">🔄</span><span class="tx"> Refresh</span></button>
+  <button id="btnSettings" aria-label="Settings"><span class="ic">⚙️</span><span class="tx"> Settings</span></button>
 </header>
 <nav id="tabs" aria-label="Columns"></nav>
 <div id="board"></div>
@@ -44,7 +43,7 @@
     <div><label>Branch</label><input id="sBranch" placeholder="master"></div>
     <div><label>File path</label><input id="sPath" placeholder="board/tasks.json"></div>
   </div>
-  <div class="mobile-only-block"><label>Theme</label><select id="sTheme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="sand">Sand</option></select></div>
+  <div><label>Theme</label><select id="sTheme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="sand">Sand</option></select></div>
   <label>Your GitHub username (recorded as the editor, and default assignee)</label><input id="sMe" placeholder="osouthgate">
   <label>Fine-grained personal access token</label><input id="sToken" type="password" autocomplete="off" placeholder="github_pat_...">
   <div class="hint"><a id="patLink" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Create a fine-grained token on GitHub &rarr;</a> (the link pre-fills the name, expiry and <b>Contents: Read and write</b>). On that page choose <b>Only select repositories</b> and pick just the repo that holds your board file. The token is kept only in this browser (localStorage) and is sent only to api.github.com.</div>
