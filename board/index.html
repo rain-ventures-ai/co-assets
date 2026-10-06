@@ -83,6 +83,7 @@
     <div class="dchips">
       <select id="cCol" class="pillsel" aria-label="Status"></select>
       <select id="cPrio" class="pillsel prio" aria-label="Priority"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+      <span class="duepill" title="Due date"><span aria-hidden="true">📅</span><input id="cDue" type="date" class="pillinput" aria-label="Due date"><button id="cDueClear" class="lx" type="button" aria-label="Clear due date" title="Clear" hidden>×</button></span>
     </div>
     <div id="cClaimWrap" class="claimbanner" hidden>
       <div id="cClaim"></div>
@@ -91,10 +92,11 @@
     <textarea id="cTitle" class="dtitle" rows="1" aria-label="Title" placeholder="Task title"></textarea>
 
     <div class="props">
-      <div class="prop"><span class="pk">👥 People</span><div class="pv" id="cWho"></div></div>
-      <div class="prop"><span class="pk">📅 Due</span><div class="pv"><input id="cDue" type="date" class="pillinput"><button id="cDueClear" class="lx" type="button" aria-label="Clear due date" title="Clear" hidden>×</button></div></div>
+      <div class="proprow">
+      <div class="prop stack"><span class="pk">👥 People</span><div class="pv" id="cWho"></div></div>
+      <div class="prop stack"><span class="pk">🏢 Client</span><div class="pv"><select id="cClient" class="pillsel" aria-label="Client"></select></div></div>
+      </div>
       <div class="prop"><span class="pk">🏷 Labels</span><div class="pv"><span id="cLabelChips"></span><input id="cLabelNew" list="labelList" class="addinline" placeholder="＋ Add label"><datalist id="labelList"></datalist></div></div>
-      <div class="prop"><span class="pk">🏢 Client</span><div class="pv"><select id="cClient" class="pillsel" aria-label="Client"></select></div></div>
     </div>
 
     <section class="dsec">
