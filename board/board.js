@@ -177,9 +177,9 @@
   }
 
   // Apply an edit to the LATEST file on GitHub (never overwrite with stale state); retry on a SHA conflict.
-  async function mutate(fn, message, targetIds = []) {
+  async function mutate(fn, message, targetIds = [], baseState = null) {
     if (busy) { setStatus('Busy, try again', 'err'); return; }
-    busy = true; const before = clone(state); let resolved = false;
+    busy = true; const before = clone(state), base = baseState || before; let resolved = false;
     try {
       const o = clone(state); fn(o); state = o; render(); // optimistic
       for (let i = 0; i < 4; i++) {
@@ -189,8 +189,8 @@
         if (res.ok) { const d = await res.json(); sha = d.sha; latest = normalise(JSON.parse(b64d(d.content))); } else sha = null;
         const pre = clone(latest); fn(latest);
         if (!resolved) {
-          const gone = deletedUnderMe(before, pre, targetIds);
-          const conflicts = findConflicts(before, pre, latest);
+          const gone = deletedUnderMe(base, pre, targetIds);
+          const conflicts = findConflicts(base, pre, latest);
           if (gone.length && !conflicts.length) {
             state = pre; render(); setStatus('That card was deleted by someone else; nothing changed', 'err'); return;
           }
@@ -248,7 +248,13 @@
     fillSelect($('fClient'), state.clients.map(c => [c, c]), 'All');
     fillSelect($('fWho'), [...state.people.map(p => [p.github, '@' + p.github]), ['__none', 'Unassigned'], ['__agent', 'Claimed by an agent']], 'Everyone');
     fillSelect($('fLabel'), state.labels.map(l => [l.name, l.name]), 'All');
-    const board = $('board'); board.textContent = ''; const hideDone = $('fHideDone').checked;
+    document.body.dataset.view = view; syncViewSw();
+    if (view !== 'board') {
+      const board = $('board'), st = board.scrollTop; board.className = view; board.textContent = '';
+      (view === 'list' ? renderList : renderCal)(); board.scrollTop = st; renderStats();
+      if ($('dlgCard').open) refreshDrawer(); return;
+    }
+    const board = $('board'); board.className = ''; board.textContent = ''; const hideDone = $('fHideDone').checked;
     state.columns.forEach((col, ci) => {
       if (hideDone && col.id === 'done') return;
       const items = state.tasks.filter(t => t.column === col.id && filtered(t));
@@ -263,7 +269,7 @@
       btn.onclick = go; inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
       add.append(inp, btn); c.append(add); board.append(c);
     });
-    renderStats(); renderTabs(); if ($('dlgComments') && $('dlgComments').open) renderComments();
+    renderStats(); renderTabs(); if ($('dlgCard').open) refreshDrawer();
   }
 
   // ---- mobile: one column at a time, chosen from a tab strip (or by swiping) ---------------
@@ -388,9 +394,16 @@
     add.addEventListener('keydown', async e => { if (e.key !== 'Enter') return; e.preventDefault(); const v = add.value; add.value = ''; await addTodo(t.id, v); if (inDialog) { renderDlgTodos(); const n = $('cTodos').querySelector('.todonew'); if (n) n.focus(); } });
     box.append(add); return box;
   }
-  function renderDlgTodos() {
-    const t = state.tasks.find(x => x.id === editing), box = $('cTodos'); box.textContent = ''; if (!t) return;
-    box.append(todoList(t, true));
+  function renderDlgTodos(force) {
+    const t = state.tasks.find(x => x.id === editing), box = $('cTodos'); if (!t) return;
+    const sig = JSON.stringify(t.todos.map(d => [d.id, d.text, !!d.done])); if (!force && sig === todoSig && box.childNodes.length) return; todoSig = sig;
+    const typed = box.querySelector('.todonew') ? box.querySelector('.todonew').value : ''; box.textContent = ''; box.append(todoList(t, true));
+    $('cTodoCount').textContent = t.todos.length ? `(${t.todos.filter(d => d.done).length}/${t.todos.length})` : '';
+    if (typed) box.querySelector('.todonew').value = typed;
+  }
+  function refreshDrawer() {   // board data changed underneath an open card: refresh the live parts only, never the form fields
+    const t = state.tasks.find(x => x.id === editing); if (!t) { $('dlgCard').close(); return; }
+    renderDlgTodos(); renderComments(); renderDlgHistory(t);
   }
   const ago2 = iso => { const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return m < 1 ? 'just now' : m < 60 ? m + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago'; };
   function renderDlgHistory(t) {
@@ -400,10 +413,11 @@
   }
 
   // ---- comments: an append-only stream per card, shown in its own dialog -------------------------
-  let commentsFor = null;
+  let commentsFor = null, cmSig = '', todoSig = '';
   function renderComments() {
-    const t = state.tasks.find(x => x.id === commentsFor); if (!t) { $('dlgComments').close(); return; }
-    $('cmTitle').textContent = t.title; const box = $('cmStream'), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40 || !box.childNodes.length;
+    const t = state.tasks.find(x => x.id === commentsFor); if (!t) { $('dlgCard').close(); return; }
+    const sig = JSON.stringify(t.comments.map(m => m.id)) + t.comments.length; if (sig === cmSig && $('cmStream').childNodes.length) return; cmSig = sig;
+    $('cmCount').textContent = t.comments.length ? `(${t.comments.length})` : ''; const box = $('cmStream'), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40 || !box.childNodes.length;
     box.textContent = '';
     t.comments.forEach(cm => {
       const row = el('div', 'cm' + (cm.by && cfg().me && cm.by.toLowerCase() === cfg().me.toLowerCase() ? ' mine' : '')), head = el('div', 'cmhead');
@@ -413,9 +427,7 @@
     if (!t.comments.length) box.append(el('div', 'cmempty', 'No comments yet. Start the conversation below.'));
     if (atBottom) box.scrollTop = box.scrollHeight;
   }
-  function openComments(id) {
-    commentsFor = id; renderComments(); $('cmHint').hidden = !!cfg().me; $('dlgComments').showModal(); $('cmStream').scrollTop = $('cmStream').scrollHeight; setTimeout(() => $('cmText').focus(), 50);
-  }
+  const openComments = id => openCard(id, 'comments');
   async function postComment() {
     const ta = $('cmText'), text = ta.value.trim(), id = commentsFor; if (!text || !id) return;
     if (busy) { toast('Busy, try again in a moment', true); return; }
@@ -425,10 +437,121 @@
     if ((state.tasks.find(x => x.id === id) || { comments: [] }).comments.length <= n0) { ta.value = text; toast('Comment not saved. Your text is still in the box.', true); }
     renderComments(); $('cmStream').scrollTop = $('cmStream').scrollHeight; ta.focus();
   }
-  $('cmPost').onclick = postComment; $('cmClose').onclick = () => $('dlgComments').close();
+  $('cmPost').onclick = postComment;
   $('cmText').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); postComment(); } });
-  $('dlgComments').addEventListener('close', () => { commentsFor = null; });
-  setInterval(() => { if ($('dlgComments').open && !busy && !document.hidden && lastSyncOk) load(true); }, 10000);   // near-live while a conversation is open (304s are free)
+  $('dlgCard').addEventListener('close', () => { commentsFor = null; });
+  setInterval(() => { if ($('dlgCard').open && !busy && !document.hidden && lastSyncOk) load(true); }, 10000);   // near-live while a conversation is open (304s are free)
+
+  // ---- views: board (columns), list (grouped rows) and calendar (month by due date) -------------------
+  let view = LS.get('kb_view', 'board'); if (!['board', 'list', 'cal'].includes(view)) view = 'board';
+  const setView = v => { view = v; LS.set('kb_view', v); render(); };
+  const syncViewSw = () => document.querySelectorAll('#viewSw button').forEach(b => { const on = b.dataset.view === view; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+  const pad2 = n => String(n).padStart(2, '0'), isoDay = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`, todayIso = () => isoDay(new Date());
+  const doneColId = () => (state.columns.find(c => c.id === 'done') || state.columns[state.columns.length - 1] || {}).id;
+  const reopenColId = () => (state.columns.find(c => c.id === 'todo') || state.columns[0] || {}).id;
+  const toggleDone = t => moveTo(t.id, t.column === doneColId() ? reopenColId() : doneColId());
+  const fmtDue = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const dueState = t => !t.due || t.column === doneColId() ? '' : t.due < todayIso() ? ' late' : t.due === todayIso() ? ' today' : '';
+
+  function addRow(col, due) {
+    const add = el('div', 'ladd'), inp = el('input'); inp.placeholder = '＋ Add task'; inp.setAttribute('aria-label', 'Add task');
+    inp.addEventListener('keydown', e => { if (e.key !== 'Enter') return; const v = inp.value.trim(); if (!v) return; inp.value = ''; addTask(v, col, due); });
+    add.append(inp); return add;
+  }
+
+  const cap = s => s ? s[0].toUpperCase() + s.slice(1) : '';
+  const firstLine = t => (t.details || '').split('\n').find(x => x.trim()) || '';
+  function chipTodo(t) { const tc = todoCount(t); if (!tc.all) return null; const b = el('button', 'chip todochip' + (tc.done === tc.all ? ' full' : ''), `☑ ${tc.done}/${tc.all}`); b.title = 'Show or hide the checklist'; b.onclick = () => { openLists.has(t.id) ? openLists.delete(t.id) : openLists.add(t.id); render(); }; return b; }
+  function chipComments(t) { const n = t.comments.length; if (!n) return null; const b = el('button', 'chip cmchip has', `💬 ${n}`); b.title = `${n} comment${n > 1 ? 's' : ''}`; b.onclick = () => openCard(t.id, 'comments'); return b; }
+  function chipAgent(t) { if (!t.claim) return null; const st = claimState(t.claim); return el('span', 'chip agentchip ' + st, `🤖 ${t.claim.agent} · ${st}`); }
+  function chipsGh(t) { const out = []; t.links.forEach(l => { const g = ghLink(l.url); if (!g) return; const a = el('a', 'chip gh ' + g.kind, g.label); a.href = safeUrl(l.url); a.target = '_blank'; a.rel = 'noopener noreferrer'; out.push(a); }); return out; }
+  const labelTags = (t, max) => { const out = []; t.labels.slice(0, max || 99).forEach(l => { const s = el('span', 'tag label', l); s.style.background = labelColor(l); out.push(s); }); if (max && t.labels.length > max) out.push(el('span', 'tag', '+' + (t.labels.length - max))); return out; };
+
+  function listRow(t) {
+    const isDone = t.column === doneColId(), row = el('div', 'trow' + (isDone ? ' done' : ''));
+    const circ = el('button', 'circ p-' + (t.priority || 'medium'), isDone ? '✓' : ''); circ.title = isDone ? 'Reopen' : 'Mark done'; circ.setAttribute('aria-label', circ.title);
+    circ.onclick = e => { e.stopPropagation(); toggleDone(t); };
+    const c0 = el('div', 'c-check'); c0.append(circ);
+    const task = el('div', 'c-task'), title = el('div', 'lt', t.title); title.onclick = () => openCard(t.id); task.append(title);
+    const mm = el('div', 'lmeta m-only');      // phone layout: everything under the title
+    if (t.due) mm.append(el('span', 'chip due' + dueState(t), '📅 ' + fmtDue(t.due)));
+    if (t.priority) mm.append(el('span', 'pr ' + t.priority, cap(t.priority)));
+    mm.append(...labelTags(t)); if (t.client) mm.append(el('span', 'tag client', t.client));
+    [chipTodo(t), chipComments(t), chipAgent(t), ...chipsGh(t)].forEach(x => x && mm.append(x));
+    if (mm.childNodes.length) task.append(mm);
+    if (openLists.has(t.id)) task.append(todoList(t, false));
+    const desc = el('div', 'c-desc', firstLine(t)); desc.title = t.details || '';
+    const ppl = el('div', 'c-people'); t.assignees.forEach(a => ppl.append(avatar(a)));
+    const lab = el('div', 'c-labels'); lab.append(...labelTags(t, 2));
+    const due = el('div', 'c-due'); if (t.due) due.append(el('span', 'chip due' + dueState(t), '📅 ' + fmtDue(t.due)));
+    const pr = el('div', 'c-prio'); if (t.priority) pr.append(el('span', 'pr ' + t.priority, cap(t.priority)));
+    const more = el('div', 'c-more'); [chipTodo(t), chipComments(t), chipAgent(t)].forEach(x => x && more.append(x));
+    const edit = el('button', 'ico', '✏️'); edit.title = 'Open task'; edit.setAttribute('aria-label', 'Open task'); edit.onclick = () => openCard(t.id); more.append(edit);
+    row.append(c0, task, desc, ppl, lab, due, pr, more); return row;
+  }
+
+  function tableOf(items) {   // header row + rows; on a phone the header disappears and rows reflow
+    const box = el('div', 'ttable'), hd = el('div', 'trow thead');
+    ['', '📝 Task', '☰ Description', '👥 People', '🏷 Labels', '📅 Due', '⚑ Priority', ''].forEach((x, i) => hd.append(el('div', ['c-check', 'c-task', 'c-desc', 'c-people', 'c-labels', 'c-due', 'c-prio', 'c-more'][i], x)));
+    box.append(hd); items.forEach(t => box.append(listRow(t))); return box;
+  }
+
+  function renderList() {
+    const board = $('board'), hideDone = $('fHideDone').checked; let collapsed; try { collapsed = new Set(JSON.parse(LS.get('kb_collapsed', '[]'))); } catch { collapsed = new Set(); }
+    state.columns.forEach(col => {
+      if (hideDone && col.id === 'done') return;
+      const items = state.tasks.filter(t => t.column === col.id && filtered(t)), shut = collapsed.has(col.id);
+      const sec = el('section', 'lsec'); sec.dataset.col = col.id;
+      const head = el('button', 'lhead'); head.setAttribute('aria-expanded', String(!shut));
+      head.append(el('span', 'spill', col.name), el('span', 'count', String(items.length)), el('span', 'spacer'), el('span', 'caret', shut ? '▸' : '▾'));
+      head.onclick = () => { shut ? collapsed.delete(col.id) : collapsed.add(col.id); LS.set('kb_collapsed', JSON.stringify([...collapsed])); render(); };
+      sec.append(head);
+      if (!shut) { const sc = el('div', 'tscroll'); if (items.length) sc.append(tableOf(items)); else sc.append(el('div', 'emptycol', 'Nothing here.')); sec.append(sc, addRow(col.id)); }
+      board.append(sec);
+    });
+  }
+
+  let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1), calSel = todayIso();
+  function renderCal() {
+    const board = $('board'), hideDone = $('fHideDone').checked, today = todayIso();
+    const tasks = state.tasks.filter(t => filtered(t) && !(hideDone && t.column === doneColId())), byDay = new Map(), undated = [];
+    tasks.forEach(t => { if (t.due) { if (!byDay.has(t.due)) byDay.set(t.due, []); byDay.get(t.due).push(t); } else undated.push(t); });
+    const wrap = el('div', 'cal'), bar = el('div', 'calbar');
+    const nav = (txt, label, fn) => { const b = el('button', 'calnav', txt); b.setAttribute('aria-label', label); b.onclick = fn; return b; };
+    bar.append(nav('‹', 'Previous month', () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1); render(); }),
+      el('h2', 'caltitle', calMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })),
+      nav('›', 'Next month', () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1); render(); }),
+      nav('Today', 'Go to today', () => { calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1); calSel = today; render(); }));
+    wrap.append(bar);
+    const grid = el('div', 'calgrid'); ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach(d => grid.append(el('div', 'calwd', d)));
+    const y = calMonth.getFullYear(), m = calMonth.getMonth(), offset = (new Date(y, m, 1).getDay() + 6) % 7, days = new Date(y, m + 1, 0).getDate();
+    for (let i = 0; i < Math.ceil((offset + days) / 7) * 7; i++) {
+      const d = new Date(y, m, 1 - offset + i), key = isoDay(d), list = byDay.get(key) || [];
+      const cell = el('div', 'calcell' + (d.getMonth() !== m ? ' out' : '') + (key === today ? ' today' : '') + (key === calSel ? ' sel' : '')); cell.dataset.day = key;
+      cell.append(el('span', 'dn', String(d.getDate())));
+      const pills = el('div', 'pills');
+      list.slice(0, 3).forEach(t => {
+        const p = el('button', 'pill p-' + (t.priority || 'medium') + (t.column === doneColId() ? ' done' : '') + dueState(t), t.title); p.title = t.title; p.draggable = true;
+        p.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', t.id); });
+        p.onclick = e => { e.stopPropagation(); openCard(t.id); }; pills.append(p);
+      });
+      if (list.length > 3) pills.append(el('span', 'more', `+${list.length - 3} more`));
+      cell.append(pills);
+      const dots = el('div', 'dots'); list.slice(0, 5).forEach(t => dots.append(el('i', 'p-' + (t.priority || 'medium') + (t.column === doneColId() ? ' done' : '')))); cell.append(dots);
+      cell.onclick = () => { calSel = key; render(); };
+      cell.addEventListener('dragover', e => { e.preventDefault(); cell.classList.add('over'); }); cell.addEventListener('dragleave', () => cell.classList.remove('over'));
+      cell.addEventListener('drop', e => { e.preventDefault(); cell.classList.remove('over'); const id = e.dataTransfer.getData('text/plain'); if (!id) return;
+        mutate(n => { const t = n.tasks.find(x => x.id === id); if (t) { t.due = key; stamp(t); } }, `Due ${key}: ${titleOf(id)}`, [id]); });
+      grid.append(cell);
+    }
+    wrap.append(grid);
+    const day = el('section', 'calday'), sel = byDay.get(calSel) || [];
+    const hd = el('h3', null, new Date(calSel + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })); hd.append(el('span', 'count', String(sel.length))); day.append(hd);
+    if (sel.length) { const sc = el('div', 'tscroll'); sc.append(tableOf(sel)); day.append(sc); } else day.append(el('div', 'emptycol', 'Nothing due this day.')); day.append(addRow(reopenColId(), calSel)); wrap.append(day);
+    const und = el('details', 'calundated'); und.open = LS.get('kb_undated', '') === '1'; und.addEventListener('toggle', () => LS.set('kb_undated', und.open ? '1' : ''));
+    und.append(el('summary', null, `No due date (${undated.length})`)); if (undated.length) { const sc = el('div', 'tscroll'); sc.append(tableOf(undated)); und.append(sc); } wrap.append(und);
+    board.append(wrap);
+  }
 
   function avatar(login) {
     const p = state.people.find(x => x.github.toLowerCase() === String(login).toLowerCase());
@@ -493,11 +616,11 @@
   const titleOf = id => (state.tasks.find(x => x.id === id) || {}).title || id;
   const moveTo = (id, col) => mutate(n => place(n, id, col, null), `Move "${titleOf(id)}" to ${col}`, [id]);
   function dropOn(e, col, beforeId) { const id = e.dataTransfer.getData('text/plain'); if (!id || id === beforeId) return; mutate(n => place(n, id, col, beforeId), `Move "${titleOf(id)}" to ${col}`, [id]); }
-  function addTask(title, col) {
+  function addTask(title, col, due) {
     const fc = $('fClient').value, w = $('fWho').value;
     const mine = me() && state.people.some(p => p.github.toLowerCase() === me().toLowerCase()) ? [state.people.find(p => p.github.toLowerCase() === me().toLowerCase()).github] : [];
     const as = w && w[0] !== '_' ? [w] : (w === '__none' ? [] : mine);
-    const t = { id: uid(), title, column: col, client: fc || '', priority: 'medium', due: '', labels: [], assignees: as, details: '', links: [], contacts: [], todos: [], comments: [], history: [], claim: null, created: nowIso(), updated: nowIso() };
+    const t = { id: uid(), title, column: col, client: fc || '', priority: 'medium', due: due || '', labels: [], assignees: as, details: '', links: [], contacts: [], todos: [], comments: [], history: [], claim: null, created: nowIso(), updated: nowIso() };
     if (me()) { t.createdBy = me(); t.updatedBy = me(); }
     mutate(n => { n.tasks.push(t); }, `Add task: ${title}`);
   }
@@ -513,9 +636,10 @@
     const p = $('cPreview'), txt = $('cDetails').value; p.textContent = '';
     p.hidden = !/https?:\/\//.test(txt); if (!p.hidden) linkify(p, txt);
   }
-  function openCard(id) {
-    const t = state.tasks.find(x => x.id === id); if (!t) return; editing = id;
-    $('cardHeading').textContent = 'Task';
+  let openedSnap = null;
+  function openCard(id, focus) {
+    const t = state.tasks.find(x => x.id === id); if (!t) return; editing = id; commentsFor = id; openedSnap = clone(t); cmSig = ''; todoSig = '';
+    $('dCreated').textContent = t.created ? 'Created ' + new Date(t.created).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + (t.createdBy ? ' by ' + t.createdBy : '') : '';
     fillSelect($('cClient'), [['', '(none)'], ...state.clients.map(c => [c, c])]); $('cClient').value = t.client || '';
     fillSelect($('cCol'), state.columns.map(c => [c.id, c.name])); $('cCol').value = t.column;
     const w = $('cWho'); w.textContent = '';
@@ -525,13 +649,14 @@
     $('cTitle').value = t.title; $('cPrio').value = t.priority || 'medium'; $('cDue').value = t.due || '';
     $('cLabels').value = t.labels.join(', '); $('labelList').textContent = ''; state.labels.forEach(l => { const o = el('option'); o.value = l.name; $('labelList').append(o); });
     $('cDetails').value = t.details || ''; $('cLinks').value = linksText(t.links); $('cContacts').value = contactsText(t.contacts);
-    updatePreview(); renderDlgTodos(); renderDlgHistory(t); $('cHistWrap').open = false;
+    updatePreview(); renderDlgTodos(true); renderComments(); $('cmHint').hidden = !!cfg().me; renderDlgHistory(t); $('cHistWrap').open = false;
     const wrap = $('cClaimWrap'); wrap.hidden = !t.claim; const dl = $('cClaim'); dl.textContent = '';
     if (t.claim) { const k = t.claim, st = claimState(k); [['Agent', k.agent], ['On behalf of', k.on_behalf_of && '@' + k.on_behalf_of], ['State', st], ['Session', k.session_id], ['Session URL', k.session_url], ['Host', k.host], ['Working dir', k.cwd], ['Branch', k.branch], ['Claimed', k.claimed_at && `${k.claimed_at} (${ago(k.claimed_at)})`], ['Last heartbeat', k.heartbeat_at && `${k.heartbeat_at} (${ago(k.heartbeat_at)})`], ['Note', k.note]].forEach(([a, b]) => { if (!b) return; dl.append(el('dt', null, a)); const dd = el('dd'); linkify(dd, b); dl.append(dd); }); }
-    $('dlgCard').showModal();
+    $('dlgCard').showModal(); $('cBody').scrollTop = 0;
+    if (focus === 'comments') setTimeout(() => { $('cmSec').scrollIntoView({ block: 'start' }); $('cmStream').scrollTop = $('cmStream').scrollHeight; $('cmText').focus(); }, 60);
   }
   $('cDetails').addEventListener('input', updatePreview);
-  $('cCancel').onclick = () => $('dlgCard').close();
+  $('cCancel').onclick = $('cClose').onclick = () => $('dlgCard').close();
   $('cSave').onclick = () => {
     const id = editing, v = {
       title: $('cTitle').value.trim(), client: $('cClient').value, column: $('cCol').value, priority: $('cPrio').value, due: $('cDue').value,
@@ -544,7 +669,7 @@
       Object.assign(t, { title: v.title, client: v.client, priority: v.priority, due: v.due, assignees: v.assignees, labels: v.labels, details: v.details, links: v.links, contacts: v.contacts }); stamp(t);
       v.labels.forEach(l => { if (!n.labels.some(x => x.name === l)) n.labels.push({ name: l, color: '#6b778c' }); });
       if (t.column !== v.column) place(n, id, v.column, null);
-    }, `Edit task: ${v.title}`, [id]);
+    }, `Edit task: ${v.title}`, [id], (() => { const b = clone(state), i = b.tasks.findIndex(x => x.id === id); if (i >= 0 && openedSnap) b.tasks[i] = clone(openedSnap); return b; })());
   };
   $('cDelete').onclick = () => { const id = editing; if (!confirm(`Delete "${titleOf(id)}"?`)) return; const title = titleOf(id); $('dlgCard').close(); mutate(n => { n.tasks = n.tasks.filter(x => x.id !== id); }, `Delete task: ${title}`, [id]); };
   $('cStuck').onclick = () => { const id = editing; $('dlgCard').close(); mutate(n => { const t = n.tasks.find(x => x.id === id); if (t && t.claim) { t.claim.status = 'stuck'; t.claim.note = (t.claim.note ? t.claim.note + ' | ' : '') + `marked stuck by ${me() || 'human'}`; stamp(t); } }, `Mark stuck: ${titleOf(id)}`, [id]); };
@@ -564,11 +689,12 @@
     LS.set('kb_repo', $('sRepo').value.trim()); LS.set('kb_branch', $('sBranch').value.trim() || 'master'); LS.set('kb_path', $('sPath').value.trim() || 'board/tasks.json'); LS.set('kb_me', $('sMe').value.trim().replace(/^@/, ''));
     if ($('sToken').value.trim()) LS.set('kb_token', $('sToken').value.trim()); $('dlgSettings').close(); load();
   };
+  document.querySelectorAll('#viewSw button').forEach(b => { b.onclick = () => setView(b.dataset.view); });
   $('btnRefresh').onclick = () => load();
   $('btnAgent').onclick = () => copyText(agentPrompt(null), 'Board instructions copied for an agent');
   $('btnFilters').onclick = () => { const o = document.body.classList.toggle('filters-open'); $('btnFilters').setAttribute('aria-expanded', String(o)); };
   ['fClient', 'fWho', 'fLabel', 'fPrio', 'fAttn', 'fHideDone'].forEach(i => $(i).addEventListener('change', render));
-  const canPoll = () => !busy && !document.hidden && !document.querySelector('dialog[open]:not(#dlgComments)') && !document.querySelector('.card.dragging') && lastSyncOk;
+  const canPoll = () => !busy && !document.hidden && !document.querySelector('dialog[open]:not(#dlgCard)') && !document.querySelector('.card.dragging') && lastSyncOk;
   setInterval(() => { if (canPoll()) load(true); }, 30000);   // conditional (ETag) so unchanged polls are 304s
   document.addEventListener('visibilitychange', () => { if (canPoll()) load(true); });  // catch up as soon as the tab is shown again
   setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) render(); }, 60000); // refresh "ago" and stale flags
