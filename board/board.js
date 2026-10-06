@@ -13,6 +13,29 @@
   (() => { const q = new URLSearchParams(location.search);
     ['repo', 'branch', 'path'].forEach(k => { const v = q.get(k); if (!v || LS.get('kb_' + k)) return;
       if (k === 'repo' ? /^[\w.-]+\/[\w.-]+$/.test(v) : /^[\w./-]+$/.test(v)) LS.set('kb_' + k, v); }); })();
+  // ---- move settings between browsers/devices: one pasteable code or a setup link (token included) --------------
+  const XFER = { text: ['repo', 'branch', 'path', 'me', 'token', 'collapsed', 'undated', 'tab'], pick: { theme: ['auto', 'light', 'dark', 'midnight', 'sand'], style: ['classic', 'colorful'], view: ['board', 'list', 'cal', 'sched'] } };
+  const xEnc = o => { const b = new TextEncoder().encode(JSON.stringify(o)); let s = ''; b.forEach(c => s += String.fromCharCode(c)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+  const xDec = t => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))));
+  function exportCode() { const o = {}; XFER.text.concat(Object.keys(XFER.pick)).forEach(k => { const v = LS.get('kb_' + k, null); if (v !== null && v !== '') o[k] = v; }); return 'kbcfg1.' + xEnc(o); }
+  function parseCode(raw) {
+    const m = /kbcfg1\.([A-Za-z0-9_-]+)/.exec(String(raw || '')); if (!m) throw new Error('That is not a board settings code.');
+    const o = xDec(m[1]), out = {};
+    XFER.text.forEach(k => { if (typeof o[k] === 'string' && o[k].length < 600) out[k] = o[k]; });
+    Object.keys(XFER.pick).forEach(k => { if (XFER.pick[k].includes(o[k])) out[k] = o[k]; });
+    if (out.repo && !/^[\w.-]+\/[\w.-]+$/.test(out.repo)) delete out.repo;
+    if (out.branch && !/^[\w./-]+$/.test(out.branch)) delete out.branch;
+    if (out.path && !/^[\w./-]+$/.test(out.path)) delete out.path;
+    if (!Object.keys(out).length) throw new Error('No usable settings found in that code.');
+    return out;
+  }
+  function applyCode(raw) { const o = parseCode(raw); Object.keys(o).forEach(k => LS.set('kb_' + k, o[k])); return o; }
+  // setup link: the code rides in the #fragment, which browsers never send to any server; it is stripped straight away
+  (() => { const m = /[#&]kbcfg=([^&]+)/.exec(location.hash); if (!m) return;
+    try { history.replaceState(null, '', location.pathname + location.search); } catch {}
+    try { const o = parseCode('kbcfg1.' + m[1]);
+      if (confirm(`Import board settings${o.repo ? ' for ' + o.repo : ''}${o.token ? ', including the access token' : ''}?\n\nThis replaces the settings stored in this browser.`)) { applyCode('kbcfg1.' + m[1]); location.reload(); }
+    } catch (e) { alert('Could not import the settings link: ' + e.message); } })();
   const DEFAULT = () => ({
     version: 2, settings: { stale_after_minutes: 30 },
     columns: [{ id: 'backlog', name: 'Backlog' }, { id: 'todo', name: 'To do' }, { id: 'in-progress', name: 'In progress' }, { id: 'done', name: 'Done' }],
@@ -941,6 +964,13 @@
   $('dlgCard').addEventListener('close', () => { commitTitle(); closeDesc(true); commentsFor = null; });   // closing never loses typed text
   $('cDelete').onclick = () => { const id = editing; if (!confirm(`Delete "${titleOf(id)}"?`)) return; const title = titleOf(id); editingDesc = false; $('dlgCard').close(); mutate(n => { n.tasks = n.tasks.filter(x => x.id !== id); }, `Delete task: ${title}`, [id]); };
 
+  $('xCode').onclick = () => copyText(exportCode(), 'Settings code copied. It contains your token, so paste it only into your own devices.');
+  $('xLink').onclick = () => copyText(`${location.origin}${location.pathname}#kbcfg=${exportCode().slice(7)}`, 'Setup link copied. It contains your token, so open it only on your own devices.');
+  $('xImport').onclick = () => { const v = $('xPaste').value.trim(); if (!v) { toast('Paste a settings code or setup link first'); return; }
+    try { const m = /kbcfg=([A-Za-z0-9_-]+)/.exec(v), o = parseCode(m ? 'kbcfg1.' + m[1] : v);
+      if (!confirm(`Import settings${o.repo ? ' for ' + o.repo : ''}${o.token ? ' including the token' : ''}? This replaces this browser's settings.`)) return;
+      applyCode(m ? 'kbcfg1.' + m[1] : v); location.reload();
+    } catch (e) { toast(e.message); } };
   // ---- settings ---------------------------------------------------------------
   function settingsTab(name) {
     ['general', 'conn'].forEach(n => { const on = n === name; $(n === 'general' ? 'panelGeneral' : 'panelConn').hidden = !on; $(n === 'general' ? 'tabGeneral' : 'tabConn').setAttribute('aria-selected', String(on)); });

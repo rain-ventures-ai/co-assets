@@ -61,6 +61,11 @@
     <div><label for="sTheme">Theme</label><select id="sTheme"><option value="auto">Auto (follows your device)</option><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="sand">Sand</option></select></div>
     <div><label>Unread markers</label><button id="sMarkAll" type="button">Mark all cards as read</button></div>
     <div><label>App version</label><button id="sUpdate" type="button">Update to latest version</button><div class="hint">Version <code id="sVer">…</code>. The board checks for a new version about every 10 minutes and whenever you come back to the tab. This button forces a full refresh of the page, styles and scripts, skipping every cache.</div></div>
+    <div><label>Move settings to another device</label>
+      <div class="cbtns"><button id="xCode" type="button">📋 Copy settings code</button><button id="xLink" type="button">🔗 Copy setup link</button></div>
+      <div class="hint">Copies everything configured in this browser: repository, username, <b>access token</b>, theme, card style and view. Open the setup link, or paste the code below, on your other browser or phone. Treat both like a password.</div>
+      <textarea id="xPaste" rows="2" placeholder="Paste a settings code or setup link here" aria-label="Settings code to import" style="width:100%;margin-top:8px"></textarea>
+      <div class="cbtns"><button id="xImport" type="button">⬇ Import settings</button></div></div>
     <div class="actions"><button id="sDone" class="primary">Done</button></div>
   </div>
 
