@@ -50,6 +50,7 @@
       if (!Array.isArray(t.labels)) t.labels = []; if (!Array.isArray(t.links)) t.links = []; if (!Array.isArray(t.contacts)) t.contacts = [];
       if (t.details == null) t.details = t.notes || '';
       if (t.claim === undefined) t.claim = null;
+      if (!Array.isArray(t.todos)) t.todos = []; if (!Array.isArray(t.history)) t.history = [];
       // legacy same-repo numbers become ordinary links (links can point at any repo)
       const repo = cfg().repo;
       if (t.linked_issue && repo && !t.links.some(l => /\/issues\/\d+/.test(l.url))) t.links.push({ title: 'Issue #' + t.linked_issue, url: `https://github.com/${repo}/issues/${t.linked_issue}` });
@@ -114,7 +115,7 @@
   }
 
   // ---- conflict detection: what you saw (base) vs what is on GitHub now (latest) vs your change ----
-  const IGNORE = new Set(['updated', 'updatedBy']);
+  const IGNORE = new Set(['updated', 'updatedBy', 'history']);
   const norm = t => { if (!t) return null; const o = {}; Object.keys(t).sort().forEach(k => { if (!IGNORE.has(k)) o[k] = t[k]; });
     if (o.claim) { o.claim = Object.assign({}, o.claim); delete o.claim.heartbeat_at; } return JSON.stringify(o); }; // heartbeats alone are not a conflict
   const byId = st => new Map(st.tasks.map(t => [t.id, t]));
@@ -123,9 +124,14 @@
     const B = byId(base), P = byId(pre), A = byId(post), out = [];
     new Set([...B.keys(), ...P.keys(), ...A.keys()]).forEach(id => {
       const b = B.get(id), p = P.get(id), a = A.get(id);
-      const mine = norm(p) !== norm(a);                 // my change touches this card
-      const theirs = !!b && norm(b) !== norm(p);        // someone changed (or deleted) it since I loaded
-      if (mine && theirs) out.push({ id, b, p, a });
+      if (!b) return;                                    // new card: nothing of theirs to clash with
+      if (!p) { if (norm(p) !== norm(a)) out.push({ id, b, p, a }); return; }   // they deleted it, I am changing it
+      const nb = JSON.parse(norm(b)), np = JSON.parse(norm(p)), na = a ? JSON.parse(norm(a)) : null;
+      if (!na) { if (norm(b) !== norm(p)) out.push({ id, b, p, a }); return; }  // I am deleting something they changed
+      const keys = new Set([...Object.keys(nb), ...Object.keys(np), ...Object.keys(na)]);
+      // conflict only when the SAME field was changed by both of us (moving a card while someone ticks a to-do is fine)
+      const clash = [...keys].some(k => JSON.stringify(np[k]) !== JSON.stringify(na[k]) && JSON.stringify(nb[k]) !== JSON.stringify(np[k]));
+      if (clash) out.push({ id, b, p, a });
     });
     return out;
   }
@@ -148,6 +154,25 @@
       const done = v => { d.close(); $('cfApply').onclick = $('cfDiscard').onclick = null; d.oncancel = null; res(v); };
       $('cfApply').onclick = () => done('apply'); $('cfDiscard').onclick = () => done('discard'); d.oncancel = () => done('discard');
       d.showModal();
+    });
+  }
+
+  // ---- history: every change made from this page is logged on the card (the CLI logs its own) ----------
+  const colName = id => (state.columns.find(c => c.id === id) || {}).name || id;
+  function autoLog(pre, post) {
+    const P = byId(pre), who = cfg().me || 'someone';
+    post.tasks.forEach(t => {
+      const p = P.get(t.id), add = text => { t.history.push({ at: nowIso(), by: who, text }); if (t.history.length > 200) t.history.splice(0, t.history.length - 200); };
+      if (!p) { add('created'); return; }
+      if (p.column !== t.column) add(`moved ${colName(p.column)} → ${colName(t.column)}`);
+      if (p.title !== t.title) add(`renamed (was "${p.title}")`);
+      if (JSON.stringify(p.assignees) !== JSON.stringify(t.assignees)) add('assignees: ' + (t.assignees.map(a => '@' + a).join(', ') || 'none'));
+      if ((p.due || '') !== (t.due || '')) add('due: ' + (t.due || 'cleared'));
+      if (p.priority !== t.priority) add('priority: ' + t.priority);
+      const pm = new Map(p.todos.map(d => [d.id, d])), tm = new Map(t.todos.map(d => [d.id, d]));
+      t.todos.forEach(d => { const o = pm.get(d.id); if (!o) add('added to-do: ' + d.text); else if (!o.done && d.done) add('✓ ' + d.text); else if (o.done && !d.done) add('reopened: ' + d.text); });
+      p.todos.forEach(d => { if (!tm.has(d.id)) add('removed to-do: ' + d.text); });
+      if (p.claim && !t.claim) add('claim released'); else if (p.claim && t.claim && p.claim.status !== t.claim.status) add('claim ' + t.claim.status);
     });
   }
 
@@ -175,6 +200,7 @@
             resolved = true;
           }
         }
+        autoLog(pre, latest);
         const out = await save(latest, message);
         if (out === 'ok') { setStatus('Saved ' + new Date().toLocaleTimeString(), 'ok'); render(); return; }
         if (out !== 'conflict') { setStatus('Save failed (' + out + ')', 'err'); state = before; render(); return; }
@@ -291,13 +317,14 @@
       if (t.assignees.length) L.push(`- assigned to: ${t.assignees.map(a => '@' + a).join(', ')}`);
       if (t.labels.length) L.push(`- labels: ${t.labels.join(', ')}`);
       if (t.details) L.push('- details:', ...t.details.split('\n').map(x => '    ' + x));
+      if (t.todos.length) L.push('- to-do list (tick these off as you finish them):', ...t.todos.map((d, i) => `    ${i + 1}. [${d.done ? 'x' : ' '}] ${d.text}`));
       if (t.links.length) L.push('- links:', ...t.links.map(l => `    ${l.title}: ${l.url}`));
       if (t.contacts.length) L.push('- contacts:', ...t.contacts.map(k => `    ${[k.name, k.role, k.email, k.phone].filter(Boolean).join(' | ')}`));
       if (t.claim) L.push(`- NOTE: already claimed by ${t.claim.agent} (session ${t.claim.session_id || '?'}, ${claimState(t.claim)}). Do not take it over unless the user says so.`);
       L.push('', 'Do this, in order:',
         `1. python3 board/board.py show ${t.id}   (re-read the latest card first)`,
         `2. python3 board/board.py claim ${t.id} --note "starting: <one-line plan>"`,
-        `3. Do the work. While working, keep the board current: python3 board/board.py heartbeat ${t.id} --note "<what you are doing>" at each milestone and at least every 10 minutes.`,
+        `3. Do the work. While working, keep the board current: python3 board/board.py heartbeat ${t.id} --note "<what you are doing>" at each milestone and at least every 10 minutes. Tick off each to-do the moment it is finished: python3 board/board.py todo-done ${t.id} <number>; add any new steps you discover with python3 board/board.py todo-add ${t.id} "<text>". The card keeps a history log automatically.`,
         `4. If you are blocked or need a human: python3 board/board.py heartbeat ${t.id} --status blocked --note "<exactly what you need>" and tell the user.`,
         `5. When finished: python3 board/board.py done ${t.id} --note "<result and link to the file or PR>"   (or: board.py release ${t.id} --column todo to hand it back)`,
         'Do not finish your reply without leaving the card claimed-and-current, done, or released.');
@@ -305,7 +332,7 @@
       L.push('Your loop:',
         '1. python3 board/board.py list --assignee $BOARD_USER --column todo --unclaimed   (find work; python3 board/board.py show <id> to read a card)',
         '2. python3 board/board.py claim <id> --note "starting: <one-line plan>"',
-        '3. Heartbeat while working: python3 board/board.py heartbeat <id> --note "<what you are doing>" at each milestone and at least every 10 minutes.',
+        '3. Heartbeat while working: python3 board/board.py heartbeat <id> --note "<what you are doing>" at each milestone and at least every 10 minutes. If the card has a to-do list, tick items off as you finish them (python3 board/board.py todo-done <id> <number>) and add new steps with todo-add.',
         '4. Blocked or need a human: python3 board/board.py heartbeat <id> --status blocked --note "<what you need>" and tell the user.',
         '5. Finished: python3 board/board.py done <id> --note "<result and link>"   (or board.py release <id> --column todo).',
         '6. New work you discover: python3 board/board.py add "Title" --assign <user> --label <x> --due YYYY-MM-DD --client "<client>" --details "<text and URLs>"',
@@ -333,6 +360,44 @@
     return { kind: 'file', label: r + '/…' + p[p.length - 1] };
   }
 
+  // ---- to-do checklists ------------------------------------------------------------
+  const openLists = new Set(), todoId = () => 'd_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const todoCount = t => ({ done: t.todos.filter(d => d.done).length, all: t.todos.length });
+  function toggleTodo(tid, did, done) {
+    return mutate(n => { const t = n.tasks.find(x => x.id === tid), d = t && t.todos.find(x => x.id === did); if (!d) return;
+      d.done = done; if (done) { d.doneBy = cfg().me || ''; d.doneAt = nowIso(); } else { delete d.doneBy; delete d.doneAt; } stamp(t); }, `To-do ${done ? 'done' : 'reopened'}: ${titleOf(tid)}`, [tid]);
+  }
+  function addTodo(tid, text) {
+    text = text.trim(); if (!text) return Promise.resolve();
+    return mutate(n => { const t = n.tasks.find(x => x.id === tid); if (!t) return; t.todos.push({ id: todoId(), text, done: false }); stamp(t); }, `Add to-do: ${titleOf(tid)}`, [tid]);
+  }
+  function removeTodo(tid, did) {
+    return mutate(n => { const t = n.tasks.find(x => x.id === tid); if (!t) return; t.todos = t.todos.filter(x => x.id !== did); stamp(t); }, `Remove to-do: ${titleOf(tid)}`, [tid]);
+  }
+  function todoList(t, inDialog) {   // shared by the card (expanded) and the edit dialog
+    const box = el('div', 'todos');
+    t.todos.forEach(d => {
+      const row = el('label', 'todo' + (d.done ? ' done' : '')), cb = el('input'); cb.type = 'checkbox'; cb.checked = !!d.done;
+      cb.onchange = async () => { await toggleTodo(t.id, d.id, cb.checked); if (inDialog) renderDlgTodos(); };
+      row.append(cb, el('span', null, d.text));
+      if (inDialog) { const x = el('button', 'x', '×'); x.type = 'button'; x.title = 'Remove'; x.onclick = async e => { e.preventDefault(); await removeTodo(t.id, d.id); renderDlgTodos(); }; row.append(x); }
+      box.append(row);
+    });
+    const add = el('input', 'todonew'); add.placeholder = 'Add a to-do and press Enter';
+    add.addEventListener('keydown', async e => { if (e.key !== 'Enter') return; e.preventDefault(); const v = add.value; add.value = ''; await addTodo(t.id, v); if (inDialog) { renderDlgTodos(); const n = $('cTodos').querySelector('.todonew'); if (n) n.focus(); } });
+    box.append(add); return box;
+  }
+  function renderDlgTodos() {
+    const t = state.tasks.find(x => x.id === editing), box = $('cTodos'); box.textContent = ''; if (!t) return;
+    box.append(todoList(t, true));
+  }
+  const ago2 = iso => { const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return m < 1 ? 'just now' : m < 60 ? m + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago'; };
+  function renderDlgHistory(t) {
+    const ol = $('cHist'); ol.textContent = ''; $('cHistSum').textContent = `History (${t.history.length})`;
+    t.history.slice().reverse().forEach(h => { const li = el('li'); const tm = el('time', null, ago2(h.at)); tm.title = h.at; li.append(tm, el('b', null, ' ' + (h.by || '?') + ' '), document.createTextNode(h.text)); ol.append(li); });
+    if (!t.history.length) ol.append(el('li', null, 'No history yet.'));
+  }
+
   function avatar(login) {
     const p = state.people.find(x => x.github.toLowerCase() === String(login).toLowerCase());
     const name = (p && p.name) || login; let h = 0; for (const ch of String(login).toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) % 360;
@@ -353,7 +418,11 @@
     t.labels.forEach(l => { const s = el('span', 'tag label', l); s.style.background = labelColor(l); tags.append(s); });
     if (t.client) tags.append(el('span', 'tag client', t.client));
     if (tags.childNodes.length) c.append(tags);
+    if (t.todos.length) { const { done, all } = todoCount(t), pr = el('div', 'prog'), bar = el('div', 'bar'), fill = el('i'); fill.style.width = Math.round(100 * done / all) + '%'; bar.append(fill); pr.append(bar); pr.classList.toggle('full', done === all); c.append(pr); }
     const foot = el('div', 'foot');
+    { const tc = todoCount(t), chip = el('button', 'chip todochip' + (tc.all && tc.done === tc.all ? ' full' : ''), tc.all ? `☑ ${tc.done}/${tc.all}` : '☑ +');
+      chip.title = tc.all ? 'Show or hide the checklist' : 'Add a checklist'; chip.setAttribute('aria-expanded', String(openLists.has(t.id)));
+      chip.onclick = () => { openLists.has(t.id) ? openLists.delete(t.id) : openLists.add(t.id); render(); }; foot.append(chip); }
     if (t.due) { const late = t.column !== 'done' && t.due < new Date().toISOString().slice(0, 10); foot.append(el('span', 'chip' + (late ? ' late' : ''), '📅 ' + t.due)); }
     const other = [];
     t.links.forEach(l => { const g = ghLink(l.url); if (!g) { other.push(l); return; }
@@ -363,6 +432,7 @@
     foot.append(el('span', 'spacer'));
     t.assignees.forEach(a => foot.append(avatar(a)));
     c.append(foot);
+    if (openLists.has(t.id)) c.append(todoList(t, false));
     if (t.claim) {
       const st = claimState(t.claim), k = t.claim;
       const b = el('div', 'claim ' + st); b.append(el('span', 'pulse'), el('strong', null, k.agent), document.createTextNode(`${k.on_behalf_of ? ' for @' + k.on_behalf_of : ''} · ${st} · beat ${ago(k.heartbeat_at || k.claimed_at)}`));
@@ -392,7 +462,7 @@
     const fc = $('fClient').value, w = $('fWho').value;
     const mine = me() && state.people.some(p => p.github.toLowerCase() === me().toLowerCase()) ? [state.people.find(p => p.github.toLowerCase() === me().toLowerCase()).github] : [];
     const as = w && w[0] !== '_' ? [w] : (w === '__none' ? [] : mine);
-    const t = { id: uid(), title, column: col, client: fc || '', priority: 'medium', due: '', labels: [], assignees: as, details: '', links: [], contacts: [], claim: null, created: nowIso(), updated: nowIso() };
+    const t = { id: uid(), title, column: col, client: fc || '', priority: 'medium', due: '', labels: [], assignees: as, details: '', links: [], contacts: [], todos: [], history: [], claim: null, created: nowIso(), updated: nowIso() };
     if (me()) { t.createdBy = me(); t.updatedBy = me(); }
     mutate(n => { n.tasks.push(t); }, `Add task: ${title}`);
   }
@@ -420,7 +490,7 @@
     $('cTitle').value = t.title; $('cPrio').value = t.priority || 'medium'; $('cDue').value = t.due || '';
     $('cLabels').value = t.labels.join(', '); $('labelList').textContent = ''; state.labels.forEach(l => { const o = el('option'); o.value = l.name; $('labelList').append(o); });
     $('cDetails').value = t.details || ''; $('cLinks').value = linksText(t.links); $('cContacts').value = contactsText(t.contacts);
-    updatePreview();
+    updatePreview(); renderDlgTodos(); renderDlgHistory(t); $('cHistWrap').open = false;
     const wrap = $('cClaimWrap'); wrap.hidden = !t.claim; const dl = $('cClaim'); dl.textContent = '';
     if (t.claim) { const k = t.claim, st = claimState(k); [['Agent', k.agent], ['On behalf of', k.on_behalf_of && '@' + k.on_behalf_of], ['State', st], ['Session', k.session_id], ['Session URL', k.session_url], ['Host', k.host], ['Working dir', k.cwd], ['Branch', k.branch], ['Claimed', k.claimed_at && `${k.claimed_at} (${ago(k.claimed_at)})`], ['Last heartbeat', k.heartbeat_at && `${k.heartbeat_at} (${ago(k.heartbeat_at)})`], ['Note', k.note]].forEach(([a, b]) => { if (!b) return; dl.append(el('dt', null, a)); const dd = el('dd'); linkify(dd, b); dl.append(dd); }); }
     $('dlgCard').showModal();
@@ -469,7 +539,8 @@
   setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) render(); }, 60000); // refresh "ago" and stale flags
 
   $('themeSel').value = window.kbTheme ? window.kbTheme.get() : 'auto';
-  $('themeSel').onchange = e => window.kbTheme && window.kbTheme.set(e.target.value);
+  $('themeSel').onchange = e => { window.kbTheme && window.kbTheme.set(e.target.value); $('sTheme').value = e.target.value; };
+  $('sTheme').value = $('themeSel').value; $('sTheme').onchange = e => { window.kbTheme && window.kbTheme.set(e.target.value); $('themeSel').value = e.target.value; };
   render();
   if (cfg().token) load(); else { setStatus('Not connected. Open Settings.', 'err'); $('btnSettings').click(); }
 })();

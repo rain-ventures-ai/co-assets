@@ -53,7 +53,7 @@ header label { font-size: 12px; color: var(--muted); display: flex; gap: 5px; al
 header select { padding: 4px 6px; font-size: 13px; }
 #status { font-size: 12px; color: var(--muted); } #status.err { color: var(--danger); } #status.ok { color: var(--ok); }
 #themeSel { padding: 4px 6px; font-size: 13px; }
-.filters { display: contents; } .mobile-only { display: none; } #tabs { display: none; }
+.filters { display: contents; } .mobile-only, .mobile-only-block { display: none; } .ic { display: none; } #tabs { display: none; }
 #btnAgent { white-space: nowrap; }
 #toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px); background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 999px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 50; max-width: 92vw; text-align: center; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); } #toast.bad { background: var(--danger); color: #fff; }
@@ -90,7 +90,7 @@ header select { padding: 4px 6px; font-size: 13px; }
 .av { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 9.5px; font-weight: 700; color: #fff; background: hsl(var(--h, 210) 55% 45%); margin-left: -4px; border: 2px solid var(--card); }
 .moves { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border); }
 .moves button { padding: 3px 9px; font-size: 12px; white-space: nowrap; }
-.moves .mv { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.moves .mv { flex: 1 1 40%; min-width: 0; white-space: normal; line-height: 1.2; }
 .moves .agentbtn { padding: 3px 8px; }
 
 /* ---- agent claim --------------------------------------------------------- */
@@ -126,17 +126,19 @@ dialog input:not([type=checkbox]), dialog textarea, dialog select { width: 100%;
 
 /* ---- mobile: one column at a time, big tap targets, full-screen dialogs ------------------- */
 @media (max-width: 760px) {
-  .mobile-only { display: inline-block; } .desktop-only { display: none; }
-  header { padding: 8px 12px; gap: 8px; }
-  header h1 { font-size: 16px; } header .stats { order: 3; width: 100%; }
+  .mobile-only { display: inline-flex; } .mobile-only-block { display: block; } .desktop-only { display: none; }
+  /* simple mobile header: title + four icon buttons; no logo, stats or theme picker (theme lives in Settings) */
+  header { padding: 6px 10px; gap: 6px; flex-wrap: wrap; }
+  header h1 { font-size: 16px; flex: 1; } .logo, header .stats, #themeSel { display: none; }
+  header .ic { display: inline; font-size: 17px; line-height: 1; } header .tx { display: none; }
+  header button { min-width: 44px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
   .filters { display: none; width: 100%; order: 5; grid-template-columns: 1fr 1fr; gap: 8px; }
   body.filters-open .filters { display: grid; }
   .filters label { flex-direction: column; align-items: stretch; gap: 3px; } .filters label:has(input[type=checkbox]) { flex-direction: row; align-items: center; min-height: 40px; }
-  header select, header button, header .mobile-only { min-height: 40px; }
+  header select { min-height: 40px; }
   select, input:not([type=checkbox]), textarea { font-size: 16px; }   /* stops iOS zooming into fields */
   input[type=checkbox] { width: 20px; height: 20px; }
-  #status { order: 4; flex: 1 1 100%; }
-  #btnAgent, #btnRefresh, #btnSettings, #themeSel { order: 2; padding: 6px 12px; }
+  #status { order: 4; flex: 1 1 100%; font-size: 11.5px; margin-top: -2px; } #status.ok { display: none; }
   #tabs { display: flex; gap: 6px; padding: 8px 12px; overflow-x: auto; background: var(--header); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 4; scrollbar-width: none; }
   #tabs::-webkit-scrollbar { display: none; }
   .tab { flex: 0 0 auto; min-height: 40px; border-radius: 999px; padding: 6px 14px; display: flex; gap: 8px; align-items: center; white-space: nowrap; }
@@ -156,3 +158,16 @@ dialog input:not([type=checkbox]), dialog textarea, dialog select { width: 100%;
   .cftable { display: block; overflow-x: auto; }
   #toast { bottom: 16px; }
 }
+
+/* ---- to-dos and history -------------------------------------------------- */
+.prog { margin-top: 9px; } .bar { height: 5px; border-radius: 999px; background: var(--panel); overflow: hidden; } .bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width .25s; }
+.prog.full .bar i { background: var(--ok); }
+button.chip { border: 0; cursor: pointer; font: inherit; font-size: 11.5px; } button.chip:hover { background: var(--accent-soft); color: var(--accent); } .todochip.full { color: var(--ok); }
+.todos { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; }
+.todo { display: flex; align-items: flex-start; gap: 8px; padding: 4px 2px; font-size: 13px; cursor: pointer; margin: 0 !important; color: var(--text) !important; font-weight: 400 !important; }
+.todo input { margin-top: 3px; flex: 0 0 auto; width: 16px; height: 16px; } .todo span { flex: 1; word-break: break-word; } .todo.done span { color: var(--muted); text-decoration: line-through; }
+.todo .x { border: 0; background: transparent; color: var(--muted); padding: 0 6px; font-size: 16px; line-height: 1; } .todo .x:hover { color: var(--danger); }
+.todonew { width: 100%; margin-top: 4px; font-size: 13px; padding: 5px 8px; }
+.hist { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12px; max-height: 220px; overflow: auto; } .hist li { padding: 3px 0; border-top: 1px solid var(--border); color: var(--text); } .hist time { color: var(--muted); display: inline-block; min-width: 62px; }
+#cHistWrap summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--muted); }
+@media (max-width: 760px) { .todo { padding: 8px 2px; font-size: 14px; } .todo input { width: 22px; height: 22px; } .todonew { min-height: 44px; } }

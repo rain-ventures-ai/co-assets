@@ -10,8 +10,7 @@
 <body>
 <header>
   <h1><span class="logo">▦</span> Team Board</h1><span id="stats" class="stats"></span>
-  <div class="spacer mobile-only"></div>
-  <button id="btnFilters" class="mobile-only" aria-expanded="false" aria-controls="filters">Filters</button>
+  <button id="btnFilters" class="mobile-only" aria-expanded="false" aria-controls="filters" aria-label="Filters"><span class="ic">⏷</span><span class="tx"> Filters</span></button>
   <div id="filters" class="filters">
   <label>Client <select id="fClient"></select></label>
   <label>Assignee <select id="fWho"></select></label>
@@ -23,9 +22,9 @@
   <span class="spacer desktop-only"></span>
   <span id="status">Not connected</span>
   <select id="themeSel" title="Theme" aria-label="Theme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="sand">Sand</option></select>
-  <button id="btnAgent" class="primary" title="Copy instructions for an AI agent: the board, how to claim and update tasks, and the skill link">🤖 Copy for agent</button>
-  <button id="btnRefresh" title="Reload from GitHub">Refresh</button>
-  <button id="btnSettings">Settings</button>
+  <button id="btnAgent" class="primary" title="Copy instructions for an AI agent: the board, how to claim and update tasks, and the skill link" aria-label="Copy for agent"><span class="ic">🤖</span><span class="tx"> Copy for agent</span></button>
+  <button id="btnRefresh" title="Reload from GitHub" aria-label="Refresh"><span class="ic">↻</span><span class="tx"> Refresh</span></button>
+  <button id="btnSettings" aria-label="Settings"><span class="ic">⚙</span><span class="tx"> Settings</span></button>
 </header>
 <nav id="tabs" aria-label="Columns"></nav>
 <div id="board"></div>
@@ -45,6 +44,7 @@
     <div><label>Branch</label><input id="sBranch" placeholder="master"></div>
     <div><label>File path</label><input id="sPath" placeholder="board/tasks.json"></div>
   </div>
+  <div class="mobile-only-block"><label>Theme</label><select id="sTheme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="sand">Sand</option></select></div>
   <label>Your GitHub username (recorded as the editor, and default assignee)</label><input id="sMe" placeholder="osouthgate">
   <label>Fine-grained personal access token</label><input id="sToken" type="password" autocomplete="off" placeholder="github_pat_...">
   <div class="hint"><a id="patLink" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Create a fine-grained token on GitHub &rarr;</a> (the link pre-fills the name, expiry and <b>Contents: Read and write</b>). On that page choose <b>Only select repositories</b> and pick just the repo that holds your board file. The token is kept only in this browser (localStorage) and is sent only to api.github.com.</div>
@@ -66,8 +66,11 @@
   <label>Labels (comma separated)</label><input id="cLabels" list="labelList"><datalist id="labelList"></datalist>
   <label>Details (notes, URLs and anything else; links become clickable)</label><textarea id="cDetails"></textarea>
   <div class="preview" id="cPreview" hidden></div>
+  <label>To-do list <span style="font-weight:400">(ticking saves straight away)</span></label>
+  <div id="cTodos"></div>
   <label>Links &mdash; one per line: <i>Title | https://url</i> (or just the URL). GitHub issues, PRs and repos from <b>any</b> repo show as chips on the card, so you can use them to group related work.</label><textarea id="cLinks" style="min-height:60px"></textarea>
   <label>Contacts &mdash; one per line: <i>Name | role | email | phone</i></label><textarea id="cContacts" style="min-height:60px"></textarea>
+  <details id="cHistWrap" style="margin-top:12px"><summary id="cHistSum">History</summary><ol id="cHist" class="hist"></ol></details>
   <div id="cClaimWrap" hidden>
     <label>Agent claim</label>
     <div class="claimbox"><dl id="cClaim" style="margin:0"></dl>
