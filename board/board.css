@@ -92,7 +92,7 @@ header #btnAgent, header #btnRefresh, header #btnSettings, header #btnFilters { 
 .av { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 9.5px; font-weight: 700; color: #fff; background: hsl(var(--h, 210) 55% 45%); margin-left: -4px; border: 2px solid var(--card); }
 .moves { display: flex; gap: 6px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border); }
 .moves .mv { flex: 1 1 0; min-width: 0; padding: 4px 6px; font-size: 12px; line-height: 1.25; white-space: normal; }
-.moves .mv:last-child { text-align: right; }
+.moves .mv { text-align: center; }
 
 /* ---- agent claim --------------------------------------------------------- */
 .claim { margin-top: 8px; font-size: 11.5px; padding: 5px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); }
@@ -172,3 +172,16 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: 11.5px; } bu
 .hist { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12px; max-height: 220px; overflow: auto; } .hist li { padding: 3px 0; border-top: 1px solid var(--border); color: var(--text); } .hist time { color: var(--muted); display: inline-block; min-width: 62px; }
 #cHistWrap summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--muted); }
 @media (max-width: 760px) { .todo { padding: 8px 2px; font-size: 14px; } .todo input { width: 22px; height: 22px; } .todonew { min-height: 44px; } }
+
+/* ---- comments ------------------------------------------------------------ */
+button.cmchip.has { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+#dlgComments { display: none; flex-direction: column; } #dlgComments[open] { display: flex; }
+.cmtop { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.cmstream { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; min-height: 120px; max-height: 52vh; padding: 4px 2px; }
+.cm { background: var(--panel); border-radius: 10px; padding: 8px 11px; max-width: 92%; align-self: flex-start; }
+.cm.mine { align-self: flex-end; background: var(--accent-soft); }
+.cmhead { display: flex; align-items: center; gap: 7px; font-size: 12px; } .cmhead .av { margin-left: 0; width: 20px; height: 20px; font-size: 9px; border: 0; } .cmhead time { color: var(--muted); margin-left: auto; }
+.cmbody { margin-top: 4px; font-size: 13.5px; white-space: pre-wrap; word-break: break-word; } .cmbody a { color: var(--accent); }
+.cmempty { color: var(--muted); text-align: center; padding: 30px 10px; font-size: 13px; }
+#cmText { width: 100%; margin-top: 10px; }
+@media (max-width: 760px) { .cmstream { max-height: none; flex: 1; } #dlgComments[open] { display: flex; } .cm { max-width: 96%; } }

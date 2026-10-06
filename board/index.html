@@ -36,6 +36,14 @@
   <div class="actions"><button id="cfDiscard">Discard my change</button><button id="cfApply" class="primary">Apply my change anyway</button></div>
 </dialog>
 
+<dialog id="dlgComments">
+  <div class="cmtop"><h3 id="cmTitle" style="margin:0">Comments</h3><button id="cmClose" class="ico" aria-label="Close">✕</button></div>
+  <div id="cmStream" class="cmstream" aria-live="polite"></div>
+  <div class="hint" id="cmHint" hidden>Set your GitHub username in Settings so comments show your name.</div>
+  <textarea id="cmText" placeholder="Write a comment (Ctrl/Cmd+Enter to post)" rows="3"></textarea>
+  <div class="actions" style="margin-top:8px"><button id="cmPost" class="primary">Post comment</button></div>
+</dialog>
+
 <dialog id="dlgSettings">
   <h3 style="margin-top:0">Connect to GitHub</h3>
   <label>Repository (owner/name)</label><input id="sRepo" placeholder="owner/repo">

@@ -50,7 +50,7 @@
       if (!Array.isArray(t.labels)) t.labels = []; if (!Array.isArray(t.links)) t.links = []; if (!Array.isArray(t.contacts)) t.contacts = [];
       if (t.details == null) t.details = t.notes || '';
       if (t.claim === undefined) t.claim = null;
-      if (!Array.isArray(t.todos)) t.todos = []; if (!Array.isArray(t.history)) t.history = [];
+      if (!Array.isArray(t.comments)) t.comments = []; if (!Array.isArray(t.todos)) t.todos = []; if (!Array.isArray(t.history)) t.history = [];
       // legacy same-repo numbers become ordinary links (links can point at any repo)
       const repo = cfg().repo;
       if (t.linked_issue && repo && !t.links.some(l => /\/issues\/\d+/.test(l.url))) t.links.push({ title: 'Issue #' + t.linked_issue, url: `https://github.com/${repo}/issues/${t.linked_issue}` });
@@ -115,7 +115,7 @@
   }
 
   // ---- conflict detection: what you saw (base) vs what is on GitHub now (latest) vs your change ----
-  const IGNORE = new Set(['updated', 'updatedBy', 'history']);
+  const IGNORE = new Set(['updated', 'updatedBy', 'history', 'comments']);   // comments are append-only and merge, so they never conflict
   const norm = t => { if (!t) return null; const o = {}; Object.keys(t).sort().forEach(k => { if (!IGNORE.has(k)) o[k] = t[k]; });
     if (o.claim) { o.claim = Object.assign({}, o.claim); delete o.claim.heartbeat_at; } return JSON.stringify(o); }; // heartbeats alone are not a conflict
   const byId = st => new Map(st.tasks.map(t => [t.id, t]));
@@ -263,7 +263,7 @@
       btn.onclick = go; inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
       add.append(inp, btn); c.append(add); board.append(c);
     });
-    renderStats(); renderTabs();
+    renderStats(); renderTabs(); if ($('dlgComments') && $('dlgComments').open) renderComments();
   }
 
   // ---- mobile: one column at a time, chosen from a tab strip (or by swiping) ---------------
@@ -318,13 +318,14 @@
       if (t.labels.length) L.push(`- labels: ${t.labels.join(', ')}`);
       if (t.details) L.push('- details:', ...t.details.split('\n').map(x => '    ' + x));
       if (t.todos.length) L.push('- to-do list (tick these off as you finish them):', ...t.todos.map((d, i) => `    ${i + 1}. [${d.done ? 'x' : ' '}] ${d.text}`));
+      if (t.comments.length) L.push('- comments (newest last):', ...t.comments.slice(-10).map(m => `    [${m.at.slice(0, 16)}] ${m.by}: ${String(m.text).replace(/\n/g, ' ')}`));
       if (t.links.length) L.push('- links:', ...t.links.map(l => `    ${l.title}: ${l.url}`));
       if (t.contacts.length) L.push('- contacts:', ...t.contacts.map(k => `    ${[k.name, k.role, k.email, k.phone].filter(Boolean).join(' | ')}`));
       if (t.claim) L.push(`- NOTE: already claimed by ${t.claim.agent} (session ${t.claim.session_id || '?'}, ${claimState(t.claim)}). Do not take it over unless the user says so.`);
       L.push('', 'Do this, in order:',
         `1. python3 board/board.py show ${t.id}   (re-read the latest card first)`,
         `2. python3 board/board.py claim ${t.id} --note "starting: <one-line plan>"`,
-        `3. Do the work. While working, keep the board current: python3 board/board.py heartbeat ${t.id} --note "<what you are doing>" at each milestone and at least every 10 minutes. Tick off each to-do the moment it is finished: python3 board/board.py todo-done ${t.id} <number>; add any new steps you discover with python3 board/board.py todo-add ${t.id} "<text>". The card keeps a history log automatically.`,
+        `3. Do the work. While working, keep the board current: python3 board/board.py heartbeat ${t.id} --note "<what you are doing>" at each milestone and at least every 10 minutes. Tick off each to-do the moment it is finished: python3 board/board.py todo-done ${t.id} <number>; add any new steps you discover with python3 board/board.py todo-add ${t.id} "<text>". The card keeps a history log automatically. Read the comments for context and post questions or updates for the team with python3 board/board.py comment ${t.id} "<text>" (also set status blocked if you need an answer).`,
         `4. If you are blocked or need a human: python3 board/board.py heartbeat ${t.id} --status blocked --note "<exactly what you need>" and tell the user.`,
         `5. When finished: python3 board/board.py done ${t.id} --note "<result and link to the file or PR>"   (or: board.py release ${t.id} --column todo to hand it back)`,
         'Do not finish your reply without leaving the card claimed-and-current, done, or released.');
@@ -398,6 +399,37 @@
     if (!t.history.length) ol.append(el('li', null, 'No history yet.'));
   }
 
+  // ---- comments: an append-only stream per card, shown in its own dialog -------------------------
+  let commentsFor = null;
+  function renderComments() {
+    const t = state.tasks.find(x => x.id === commentsFor); if (!t) { $('dlgComments').close(); return; }
+    $('cmTitle').textContent = t.title; const box = $('cmStream'), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40 || !box.childNodes.length;
+    box.textContent = '';
+    t.comments.forEach(cm => {
+      const row = el('div', 'cm' + (cm.by && cfg().me && cm.by.toLowerCase() === cfg().me.toLowerCase() ? ' mine' : '')), head = el('div', 'cmhead');
+      head.append(avatar(String(cm.by || '?').replace(/@.*/, '')), el('b', null, cm.by || '?'), el('time', null, ago2(cm.at)));
+      head.lastChild.title = cm.at; const body = el('div', 'cmbody'); linkify(body, cm.text); row.append(head, body); box.append(row);
+    });
+    if (!t.comments.length) box.append(el('div', 'cmempty', 'No comments yet. Start the conversation below.'));
+    if (atBottom) box.scrollTop = box.scrollHeight;
+  }
+  function openComments(id) {
+    commentsFor = id; renderComments(); $('cmHint').hidden = !!cfg().me; $('dlgComments').showModal(); $('cmStream').scrollTop = $('cmStream').scrollHeight; setTimeout(() => $('cmText').focus(), 50);
+  }
+  async function postComment() {
+    const ta = $('cmText'), text = ta.value.trim(), id = commentsFor; if (!text || !id) return;
+    if (busy) { toast('Busy, try again in a moment', true); return; }
+    const n0 = (state.tasks.find(x => x.id === id) || { comments: [] }).comments.length; ta.value = ''; $('cmPost').disabled = true;
+    await mutate(n => { const t = n.tasks.find(x => x.id === id); if (!t) return; t.comments.push({ id: 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), at: nowIso(), by: cfg().me || 'someone', text }); stamp(t); }, `Comment: ${titleOf(id)}`, [id]);
+    $('cmPost').disabled = false;
+    if ((state.tasks.find(x => x.id === id) || { comments: [] }).comments.length <= n0) { ta.value = text; toast('Comment not saved. Your text is still in the box.', true); }
+    renderComments(); $('cmStream').scrollTop = $('cmStream').scrollHeight; ta.focus();
+  }
+  $('cmPost').onclick = postComment; $('cmClose').onclick = () => $('dlgComments').close();
+  $('cmText').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); postComment(); } });
+  $('dlgComments').addEventListener('close', () => { commentsFor = null; });
+  setInterval(() => { if ($('dlgComments').open && !busy && !document.hidden && lastSyncOk) load(true); }, 10000);   // near-live while a conversation is open (304s are free)
+
   function avatar(login) {
     const p = state.people.find(x => x.github.toLowerCase() === String(login).toLowerCase());
     const name = (p && p.name) || login; let h = 0; for (const ch of String(login).toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) % 360;
@@ -427,6 +459,7 @@
     { const tc = todoCount(t), chip = el('button', 'chip todochip' + (tc.all && tc.done === tc.all ? ' full' : ''), tc.all ? `☑ ${tc.done}/${tc.all}` : '☑ +');
       chip.title = tc.all ? 'Show or hide the checklist' : 'Add a checklist'; chip.setAttribute('aria-expanded', String(openLists.has(t.id)));
       chip.onclick = () => { openLists.has(t.id) ? openLists.delete(t.id) : openLists.add(t.id); render(); }; foot.append(chip); }
+    { const n = t.comments.length, cm = el('button', 'chip cmchip' + (n ? ' has' : ''), n ? `💬 ${n}` : '💬'); cm.title = n ? `${n} comment${n > 1 ? 's' : ''}` : 'Add a comment'; cm.setAttribute('aria-label', cm.title); cm.onclick = () => openComments(t.id); foot.append(cm); }
     if (t.due) { const late = t.column !== 'done' && t.due < new Date().toISOString().slice(0, 10); foot.append(el('span', 'chip' + (late ? ' late' : ''), '📅 ' + t.due)); }
     const other = [];
     t.links.forEach(l => { const g = ghLink(l.url); if (!g) { other.push(l); return; }
@@ -464,7 +497,7 @@
     const fc = $('fClient').value, w = $('fWho').value;
     const mine = me() && state.people.some(p => p.github.toLowerCase() === me().toLowerCase()) ? [state.people.find(p => p.github.toLowerCase() === me().toLowerCase()).github] : [];
     const as = w && w[0] !== '_' ? [w] : (w === '__none' ? [] : mine);
-    const t = { id: uid(), title, column: col, client: fc || '', priority: 'medium', due: '', labels: [], assignees: as, details: '', links: [], contacts: [], todos: [], history: [], claim: null, created: nowIso(), updated: nowIso() };
+    const t = { id: uid(), title, column: col, client: fc || '', priority: 'medium', due: '', labels: [], assignees: as, details: '', links: [], contacts: [], todos: [], comments: [], history: [], claim: null, created: nowIso(), updated: nowIso() };
     if (me()) { t.createdBy = me(); t.updatedBy = me(); }
     mutate(n => { n.tasks.push(t); }, `Add task: ${title}`);
   }
@@ -535,7 +568,7 @@
   $('btnAgent').onclick = () => copyText(agentPrompt(null), 'Board instructions copied for an agent');
   $('btnFilters').onclick = () => { const o = document.body.classList.toggle('filters-open'); $('btnFilters').setAttribute('aria-expanded', String(o)); };
   ['fClient', 'fWho', 'fLabel', 'fPrio', 'fAttn', 'fHideDone'].forEach(i => $(i).addEventListener('change', render));
-  const canPoll = () => !busy && !document.hidden && !document.querySelector('dialog[open]') && !document.querySelector('.card.dragging') && lastSyncOk;
+  const canPoll = () => !busy && !document.hidden && !document.querySelector('dialog[open]:not(#dlgComments)') && !document.querySelector('.card.dragging') && lastSyncOk;
   setInterval(() => { if (canPoll()) load(true); }, 30000);   // conditional (ETag) so unchanged polls are 304s
   document.addEventListener('visibilitychange', () => { if (canPoll()) load(true); });  // catch up as soon as the tab is shown again
   setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) render(); }, 60000); // refresh "ago" and stale flags
