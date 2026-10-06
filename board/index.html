@@ -337,7 +337,7 @@
     const fc = $('fClient').value, w = $('fWho').value;
     const mine = me() && state.people.some(p => p.github.toLowerCase() === me().toLowerCase()) ? [state.people.find(p => p.github.toLowerCase() === me().toLowerCase()).github] : [];
     const as = w && w[0] !== '_' ? [w] : (w === '__none' ? [] : mine);
-    const t = { id: uid(), title, column: col, client: fc || state.clients[0], priority: 'medium', due: '', labels: [], assignees: as, details: '', links: [], contacts: [], linked_issue: null, linked_pr: null, claim: null, created: nowIso(), updated: nowIso() };
+    const t = { id: uid(), title, column: col, client: fc || '', priority: 'medium', due: '', labels: [], assignees: as, details: '', links: [], contacts: [], linked_issue: null, linked_pr: null, claim: null, created: nowIso(), updated: nowIso() };
     if (me()) { t.createdBy = me(); t.updatedBy = me(); }
     mutate(n => { n.tasks.push(t); }, `Add task: ${title}`);
   }
@@ -356,7 +356,7 @@
   function openCard(id) {
     const t = state.tasks.find(x => x.id === id); if (!t) return; editing = id;
     $('cardHeading').textContent = 'Task';
-    fillSelect($('cClient'), state.clients.map(c => [c, c])); $('cClient').value = t.client;
+    fillSelect($('cClient'), [['', '(none)'], ...state.clients.map(c => [c, c])]); $('cClient').value = t.client || '';
     fillSelect($('cCol'), state.columns.map(c => [c.id, c.name])); $('cCol').value = t.column;
     const w = $('cWho'); w.textContent = '';
     state.people.concat((t.assignees || []).filter(a => !state.people.some(p => p.github === a)).map(a => ({ github: a, name: a }))).forEach(p => {
