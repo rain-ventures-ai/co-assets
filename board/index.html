@@ -79,8 +79,9 @@
 </dialog>
 
 <dialog id="dlgCard" class="drawer" aria-label="Task details">
-  <div class="dhead"><span id="dCreated" class="dcreated"></span><span class="spacer"></span><span id="dSaved" class="dsaved" role="status"></span><button id="cAgent" type="button" class="small agentcopy" title="Copy instructions for an AI agent to work on this task: the card, how to claim it, and the skill link" aria-label="Copy for agent"><span aria-hidden="true">🤖</span><span class="atxt"> Copy for agent</span></button><button id="cClose" class="ico" aria-label="Close">✕</button></div>
+  <div class="dhead"><span class="dsaved-wrap"></span><span class="spacer"></span><span id="dSaved" class="dsaved" role="status"></span><button id="cAgent" type="button" class="small agentcopy" title="Copy instructions for an AI agent to work on this task: the card, how to claim it, and the skill link" aria-label="Copy for agent"><span aria-hidden="true">🤖</span><span class="atxt"> Copy for agent</span></button><button id="cClose" class="ico" aria-label="Close">✕</button></div>
   <div class="dbody" id="cBody">
+    <textarea id="cTitle" class="dtitle" rows="1" aria-label="Title" placeholder="Task title"></textarea>
     <div class="dchips">
       <select id="cCol" class="pillsel" aria-label="Status"></select>
       <select id="cPrio" class="pillsel prio" aria-label="Priority"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
@@ -90,14 +91,13 @@
       <div id="cClaim"></div>
       <div class="cbtns"><button id="cStuck" type="button">Mark stuck</button><button id="cRelease" type="button" class="danger">Release claim</button></div>
     </div>
-    <textarea id="cTitle" class="dtitle" rows="1" aria-label="Title" placeholder="Task title"></textarea>
 
     <div class="props">
       <div class="proprow">
       <div class="prop stack"><span class="pk">👥 People</span><div class="pv" id="cWho"></div></div>
       <div class="prop stack"><span class="pk">🏢 Client</span><div class="pv"><select id="cClient" class="pillsel" aria-label="Client"></select></div></div>
       </div>
-      <div class="prop"><span class="pk">🏷 Labels</span><div class="pv"><span id="cLabelChips"></span><input id="cLabelNew" list="labelList" class="addinline" placeholder="＋ Add label"><datalist id="labelList"></datalist></div></div>
+      <div class="prop"><span class="pk">🏷 Labels</span><div class="pv"><span id="cLabelChips"></span><button id="cLabelAdd" type="button" class="tag lplus" title="Add a label" aria-label="Add a label">＋</button><input id="cLabelNew" list="labelList" class="addinline lnew" placeholder="Label name" hidden><datalist id="labelList"></datalist></div></div>
     </div>
 
     <section class="dsec">
@@ -109,19 +109,19 @@
       </div>
     </section>
 
-    <section class="dsec"><div class="dsech"><h4>☑ Checklist <span id="cTodoCount" class="muted"></span></h4></div><div id="cTodos"></div></section>
-    <section class="dsec"><div class="dsech"><h4>🔗 Links <span id="cLinkCount" class="muted"></span></h4></div><div id="cLinkList"></div><input id="cLinkNew" class="addinline wide" placeholder="＋ Add a link (paste a URL, or Title | URL)"></section>
-    <section class="dsec"><div class="dsech"><h4>👤 Contacts</h4></div><div id="cContactList"></div><input id="cContactNew" class="addinline wide" placeholder="＋ Add a contact: Name | role | email | phone"></section>
-
     <section class="dsec" id="cmSec"><div class="dsech"><h4>💬 Comments <span id="cmCount" class="muted"></span></h4></div>
       <div class="composer"><textarea id="cmText" rows="1" placeholder="Write a comment…" aria-label="Write a comment"></textarea>
         <div class="cbtns" id="cmActions" hidden><button id="cmPost" type="button" class="primary">Comment</button><span class="hint">Ctrl/Cmd+Enter posts</span></div></div>
       <div class="hint" id="cmHint" hidden>Set your GitHub username in Settings so comments show your name.</div>
       <div id="cmStream" class="cmlist" aria-live="polite"></div>
     </section>
+    <div class="addbar" id="addBar" role="group" aria-label="Add to this task"><button type="button" data-sec="todos">☑ Checklist</button><button type="button" data-sec="links">🔗 Link</button><button type="button" data-sec="contacts">👤 Contact</button></div>
+    <section class="dsec optsec" data-sec="todos"><div class="dsech"><h4>☑ Checklist <span id="cTodoCount" class="muted"></span></h4></div><div id="cTodos"></div></section>
+    <section class="dsec optsec" data-sec="links"><div class="dsech"><h4>🔗 Links <span id="cLinkCount" class="muted"></span></h4></div><div id="cLinkList"></div><input id="cLinkNew" class="addinline wide" placeholder="＋ Add a link (paste a URL, or Title | URL)"></section>
+    <section class="dsec optsec" data-sec="contacts"><div class="dsech"><h4>👤 Contacts</h4></div><div id="cContactList"></div><input id="cContactNew" class="addinline wide" placeholder="＋ Add a contact: Name | role | email | phone"></section>
 
     <details id="cHistWrap" class="dsec"><summary id="cHistSum">Activity</summary><ol id="cHist" class="hist"></ol></details>
-    <div class="dfoot2"><button id="cDelete" type="button" class="danger">Delete task</button></div>
+    <div class="dfoot2"><span id="dCreated" class="dcreated"></span><button id="cDelete" type="button" class="danger">Delete task</button></div>
   </div>
 </dialog>
 

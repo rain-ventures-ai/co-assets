@@ -385,7 +385,7 @@
     state.columns.forEach((col, ci) => {
       if (hideDone && col.id === 'done') return;
       const items = state.tasks.filter(t => t.column === col.id && filtered(t));
-      const c = el('section', 'col' + (col.id === activeCol() ? ' active' : '')); c.dataset.col = col.id; const h = el('h2'); h.append(el('span', 'dot'), el('span', 'cname', col.name), el('span', 'count', String(items.length))); c.append(h);
+      const c = el('section', 'col' + (col.id === activeCol() ? ' active' : '')); c.dataset.col = col.id; const h = el('h2'); h.append(el('span', 'dot'), el('span', 'cname', col.name), el('span', 'count', String(items.length))); const hb = el('button', 'hadd', '＋'); hb.type = 'button'; hb.title = 'Add a task to ' + col.name; hb.setAttribute('aria-label', 'Add a task to ' + col.name); h.append(hb); c.append(h);
       const cards = el('div', 'cards');
       cards.addEventListener('dragover', e => { e.preventDefault(); c.classList.add('over'); });
       cards.addEventListener('dragleave', () => c.classList.remove('over'));
@@ -394,7 +394,7 @@
       const add = el('div', 'add'), inp = el('input'), btn = el('button', 'primary', 'Add'); inp.placeholder = 'Add a task…';
       const go = () => { const v = inp.value.trim(); if (!v) return; inp.value = ''; addTask(v, col.id); };
       btn.onclick = go; inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
-      add.append(inp, btn); c.append(add); board.append(c);
+      add.append(inp, btn); c.append(add); hb.onclick = () => { inp.scrollIntoView({ block: 'nearest' }); inp.focus(); }; board.append(c);
     });
     renderLegend(); renderStats(); renderTabs(); if ($('dlgCard').open) refreshDrawer();
   }
@@ -579,8 +579,11 @@
   const fmtDue = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
   const dueState = t => !t.due || t.column === doneColId() ? '' : t.due < todayIso() ? ' late' : t.due === todayIso() ? ' today' : '';
 
+  // floating ＋ (phones, board and list views): jump to the add box for the column you are looking at
+  const fab = el('button', 'fab', '＋'); fab.type = 'button'; fab.id = 'fab'; fab.title = 'Add a task'; fab.setAttribute('aria-label', 'Add a task'); document.body.append(fab);
+  fab.onclick = () => { const c = activeCol(); const inp = document.querySelector(view === 'board' ? `.col[data-col="${c}"] .add input` : `.ladd[data-col="${c}"] input`) || document.querySelector('.add input, .ladd input'); if (inp) { inp.scrollIntoView({ block: 'center' }); inp.focus(); } };
   function addRow(col, due) {
-    const add = el('div', 'ladd'), inp = el('input'); inp.placeholder = '＋ Add task'; inp.setAttribute('aria-label', 'Add task');
+    const cn = (state.columns.find(c => c.id === col) || {}).name || '', add = el('div', 'ladd'), inp = el('input'); add.dataset.col = col; inp.placeholder = due ? '＋ Add task for this day' : '＋ Add task to ' + cn; inp.setAttribute('aria-label', 'Add task');
     inp.addEventListener('keydown', e => { if (e.key !== 'Enter') return; const v = inp.value.trim(); if (!v) return; inp.value = ''; addTask(v, col, due); });
     add.append(inp); return add;
   }
@@ -633,7 +636,7 @@
       head.append(el('span', 'spill', col.name), el('span', 'count', String(items.length)), el('span', 'spacer'), el('span', 'caret', shut ? '▸' : '▾'));
       head.onclick = () => { shut ? collapsed.delete(col.id) : collapsed.add(col.id); LS.set('kb_collapsed', JSON.stringify([...collapsed])); render(); };
       sec.append(head);
-      if (!shut) { const sc = el('div', 'tscroll'); if (items.length) sc.append(tableOf(items)); else sc.append(el('div', 'emptycol', 'Nothing here.')); sec.append(sc, addRow(col.id)); }
+      if (!shut) { const sc = el('div', 'tscroll'); if (items.length) sc.append(tableOf(items)); else sc.append(el('div', 'emptycol', 'Nothing here.')); sec.append(addRow(col.id), sc); }
       board.append(sec);
     });
   }
@@ -857,6 +860,8 @@
     t.labels.forEach(l => { const s = el('span', 'tag label lchip', l); s.style.background = labelColor(l); const x = el('button', 'lx', '×'); x.type = 'button'; x.title = 'Remove label'; x.setAttribute('aria-label', 'Remove label ' + l);
       x.onclick = () => edit(editing, tt => { tt.labels = tt.labels.filter(y => y !== l); }, `Labels: ${titleOf(editing)}`); s.append(x); box.append(s); });
   }
+  $('cLabelAdd').onclick = () => { $('cLabelAdd').hidden = true; $('cLabelNew').hidden = false; $('cLabelNew').focus(); };
+  $('cLabelNew').addEventListener('blur', () => setTimeout(() => { if (!$('cLabelNew').value.trim()) { $('cLabelNew').hidden = true; $('cLabelAdd').hidden = false; } }, 150));
   function addLabel() {
     const inp = $('cLabelNew'), v = inp.value.replace(/,/g, '').trim(); inp.value = ''; if (!v) return;
     edit(editing, (t, n) => { if (!t.labels.includes(v)) t.labels.push(v); if (!n.labels.some(x => x.name === v)) n.labels.push({ name: v, color: '#6b778c' }); }, `Labels: ${titleOf(editing)}`);
@@ -906,12 +911,24 @@
     $('cPrio').dataset.v = $('cPrio').value; $('cDueClear').hidden = !$('cDue').value;
     const ti = $('cTitle'); if (force || (document.activeElement !== ti && ti.value !== t.title)) { ti.value = t.title; fieldBase.title = t.title; } autosize(ti);
     if (!editingDesc) { fieldBase.details = t.details || ''; renderDescView(t); }
-    renderPeople(t); renderLabelChips(t); renderLinkList(t); renderContactList(t); renderClaim(t); renderDlgTodos(force); renderComments(); renderDlgHistory(t);
+    renderPeople(t); renderLabelChips(t); renderLinkList(t); renderContactList(t); renderClaim(t); renderDlgTodos(force); renderComments(); renderDlgHistory(t); syncSections(t);
   }
+  // Checklist / Links / Contacts show only when they hold something (or were just opened from the add bar)
+  const openSecs = new Set();
+  function syncSections(t) {
+    const has = { todos: t.todos.length, links: t.links.length, contacts: t.contacts.length };
+    let hidden = 0;
+    document.querySelectorAll('.optsec').forEach(s => { const k = s.dataset.sec, show = !!has[k] || openSecs.has(k); s.hidden = !show; });
+    document.querySelectorAll('#addBar button').forEach(b => { const k = b.dataset.sec, show = !has[k] && !openSecs.has(k); b.hidden = !show; if (show) hidden++; });
+    $('addBar').hidden = !hidden;
+  }
+  document.querySelectorAll('#addBar button').forEach(b => { b.onclick = () => {
+    const k = b.dataset.sec; openSecs.add(k); const t = taskNow(); if (t) syncSections(t);
+    const f = k === 'todos' ? document.querySelector('#cTodos .todonew') : $(k === 'links' ? 'cLinkNew' : 'cContactNew'); if (f) { f.scrollIntoView({ block: 'center' }); f.focus(); } }; });
   function refreshDrawer() { const t = taskNow(); if (!t) { $('dlgCard').close(); return; } fillDrawer(t, false); }   // board data changed underneath an open card
 
   function openCard(id, focus) {
-    const t = state.tasks.find(x => x.id === id); if (!t) return; editing = id; commentsFor = id; cmSig = ''; todoSig = ''; editingDesc = false;
+    const t = state.tasks.find(x => x.id === id); if (!t) return; editing = id; openSecs.clear(); commentsFor = id; cmSig = ''; todoSig = ''; editingDesc = false;
     $('descEdit').hidden = true; $('cDescView').hidden = false; $('cDescBtn').hidden = false; $('dSaved').textContent = '';
     $('dCreated').textContent = t.created ? 'Created ' + new Date(t.created).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + (t.createdBy ? ' by ' + t.createdBy : '') : '';
     fillDrawer(t, true); $('cmText').value = ''; autosize($('cmText')); $('cmActions').hidden = true; $('cmHint').hidden = !!cfg().me; $('cHistWrap').open = false;

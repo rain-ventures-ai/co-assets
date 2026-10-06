@@ -438,3 +438,21 @@ header .badge { top: -6px; right: -6px; }
 @media (max-width: 760px) { .updatebar { bottom: 10px; flex-wrap: wrap; justify-content: center; border-radius: 16px; } }
 
 .agentcopy { border-radius: 999px; padding: 3px 12px; } @media (max-width: 760px) { .agentcopy .atxt { display: none; } .agentcopy { min-width: 40px; min-height: 36px; } }
+
+/* ---- add-task discoverability ------------------------------------------------ */
+.col h2 .hadd { border: 0; background: var(--card); color: var(--accent); width: 24px; height: 24px; min-height: 0; padding: 0; border-radius: 50%; font-size: 16px; line-height: 1; cursor: pointer; display: inline-grid; place-items: center; font-weight: 700; } .col h2 .hadd:hover { background: var(--accent); color: var(--on-accent); }
+.ladd { margin: 4px 14px 8px; } .ladd input { border: 1px dashed var(--border); border-radius: 10px; padding: 9px 12px; color: var(--accent); font-weight: 600; } .ladd input::placeholder { color: var(--accent); opacity: .9; } .ladd input:focus { border-style: solid; border-color: var(--accent); }
+.fab { display: none; position: fixed; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 40; width: 54px; height: 54px; min-height: 0; padding: 0; border-radius: 50%; border: 0; background: var(--accent); color: var(--on-accent); font-size: 30px; line-height: 1; box-shadow: 0 6px 18px rgba(0,0,0,.3); cursor: pointer; }
+@media (max-width: 760px) { body[data-view="board"] .fab, body[data-view="list"] .fab { display: grid; place-items: center; } body:has(dialog[open]) .fab { display: none !important; } }
+
+/* ---- drawer: title first, compact property block, optional sections ------------------ */
+.dbody .dtitle { margin-top: 2px; } .dchips { margin-top: 6px; }
+.dfoot2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; } .dfoot2 .dcreated { font-size: 12px; }
+.props .prop { min-height: 0; padding: 4px 0; }
+.lplus { border: 1px dashed var(--border); background: transparent; color: var(--muted); cursor: pointer; padding: 1px 9px; margin: 0 4px 4px 0; min-height: 0; font-size: 12px; font-weight: 600; } .lplus:hover { color: var(--accent); border-color: var(--accent); }
+.addinline.lnew { width: 150px; margin-bottom: 4px; }
+.addbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.addbar button { border-radius: 999px; padding: 4px 14px; font-size: 13px; background: var(--panel); border: 1px dashed var(--border); color: var(--muted); cursor: pointer; } .addbar button:hover { color: var(--accent); border-color: var(--accent); }
+.addbar[hidden], .optsec[hidden], .addbar button[hidden], .lplus[hidden], .lnew[hidden] { display: none !important; }
+@media (max-width: 760px) { .addbar button { min-height: 40px; } .tag.lplus { min-height: 0; } .dsec { margin-top: 14px; padding-top: 12px; } .dtitle { font-size: 20px; } }
+.cbtns[hidden] { display: none !important; }
