@@ -49,7 +49,12 @@
       if (!Array.isArray(t.assignees)) { const p = people.find(p => p.name === t.owner || p.github === t.owner); t.assignees = p ? [p.github] : []; }
       if (!Array.isArray(t.labels)) t.labels = []; if (!Array.isArray(t.links)) t.links = []; if (!Array.isArray(t.contacts)) t.contacts = [];
       if (t.details == null) t.details = t.notes || '';
-      if (t.claim === undefined) t.claim = null; if (t.linked_pr === undefined) t.linked_pr = null;
+      if (t.claim === undefined) t.claim = null;
+      // legacy same-repo numbers become ordinary links (links can point at any repo)
+      const repo = cfg().repo;
+      if (t.linked_issue && repo && !t.links.some(l => /\/issues\/\d+/.test(l.url))) t.links.push({ title: 'Issue #' + t.linked_issue, url: `https://github.com/${repo}/issues/${t.linked_issue}` });
+      if (t.linked_pr && repo && !t.links.some(l => /\/pull\/\d+/.test(l.url))) t.links.push({ title: 'PR #' + t.linked_pr, url: `https://github.com/${repo}/pull/${t.linked_pr}` });
+      delete t.linked_issue; delete t.linked_pr;
     });
     return n;
   }
@@ -317,6 +322,17 @@
     chip(`${open.length} open`); if (agents) chip(`${agents} with an agent`, 'agent'); if (attn) chip(`${attn} need attention`, 'warn');
   }
 
+  // Recognise GitHub URLs (any repo) so they read as "owner/repo#12" chips on the card
+  function ghLink(u) {
+    let x; try { x = new URL(u); } catch { return null; }
+    if (x.hostname !== 'github.com') return null;
+    const p = x.pathname.split('/').filter(Boolean); if (p.length < 2) return null; const r = p[0] + '/' + p[1];
+    if (p[2] === 'issues' && /^\d+$/.test(p[3] || '')) return { kind: 'issue', label: `${r}#${p[3]}` };
+    if (p[2] === 'pull' && /^\d+$/.test(p[3] || '')) return { kind: 'pr', label: `PR ${r}#${p[3]}` };
+    if (p.length === 2) return { kind: 'repo', label: r };
+    return { kind: 'file', label: r + '/…' + p[p.length - 1] };
+  }
+
   function avatar(login) {
     const p = state.people.find(x => x.github.toLowerCase() === String(login).toLowerCase());
     const name = (p && p.name) || login; let h = 0; for (const ch of String(login).toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) % 360;
@@ -339,10 +355,11 @@
     if (tags.childNodes.length) c.append(tags);
     const foot = el('div', 'foot');
     if (t.due) { const late = t.column !== 'done' && t.due < new Date().toISOString().slice(0, 10); foot.append(el('span', 'chip' + (late ? ' late' : ''), '📅 ' + t.due)); }
-    if (t.links.length) foot.append(el('span', 'chip', '🔗 ' + t.links.length));
+    const other = [];
+    t.links.forEach(l => { const g = ghLink(l.url); if (!g) { other.push(l); return; }
+      const a = el('a', 'chip gh ' + g.kind, g.label); a.href = safeUrl(l.url); a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = l.title || l.url; foot.append(a); });
+    if (other.length) foot.append(el('span', 'chip', '🔗 ' + other.length));
     if (t.contacts.length) foot.append(el('span', 'chip', '👤 ' + t.contacts.length));
-    if (t.linked_issue) { const a = el('a', 'chip', '#' + t.linked_issue); a.title = 'Linked issue'; a.href = `https://github.com/${cfg().repo}/issues/${encodeURIComponent(t.linked_issue)}`; a.target = '_blank'; a.rel = 'noopener'; foot.append(a); }
-    if (t.linked_pr) { const a = el('a', 'chip', 'PR #' + t.linked_pr); a.href = `https://github.com/${cfg().repo}/pull/${encodeURIComponent(t.linked_pr)}`; a.target = '_blank'; a.rel = 'noopener'; foot.append(a); }
     foot.append(el('span', 'spacer'));
     t.assignees.forEach(a => foot.append(avatar(a)));
     c.append(foot);
@@ -375,7 +392,7 @@
     const fc = $('fClient').value, w = $('fWho').value;
     const mine = me() && state.people.some(p => p.github.toLowerCase() === me().toLowerCase()) ? [state.people.find(p => p.github.toLowerCase() === me().toLowerCase()).github] : [];
     const as = w && w[0] !== '_' ? [w] : (w === '__none' ? [] : mine);
-    const t = { id: uid(), title, column: col, client: fc || '', priority: 'medium', due: '', labels: [], assignees: as, details: '', links: [], contacts: [], linked_issue: null, linked_pr: null, claim: null, created: nowIso(), updated: nowIso() };
+    const t = { id: uid(), title, column: col, client: fc || '', priority: 'medium', due: '', labels: [], assignees: as, details: '', links: [], contacts: [], claim: null, created: nowIso(), updated: nowIso() };
     if (me()) { t.createdBy = me(); t.updatedBy = me(); }
     mutate(n => { n.tasks.push(t); }, `Add task: ${title}`);
   }
@@ -403,7 +420,7 @@
     $('cTitle').value = t.title; $('cPrio').value = t.priority || 'medium'; $('cDue').value = t.due || '';
     $('cLabels').value = t.labels.join(', '); $('labelList').textContent = ''; state.labels.forEach(l => { const o = el('option'); o.value = l.name; $('labelList').append(o); });
     $('cDetails').value = t.details || ''; $('cLinks').value = linksText(t.links); $('cContacts').value = contactsText(t.contacts);
-    $('cIssue').value = t.linked_issue || ''; $('cPr').value = t.linked_pr || ''; updatePreview();
+    updatePreview();
     const wrap = $('cClaimWrap'); wrap.hidden = !t.claim; const dl = $('cClaim'); dl.textContent = '';
     if (t.claim) { const k = t.claim, st = claimState(k); [['Agent', k.agent], ['On behalf of', k.on_behalf_of && '@' + k.on_behalf_of], ['State', st], ['Session', k.session_id], ['Session URL', k.session_url], ['Host', k.host], ['Working dir', k.cwd], ['Branch', k.branch], ['Claimed', k.claimed_at && `${k.claimed_at} (${ago(k.claimed_at)})`], ['Last heartbeat', k.heartbeat_at && `${k.heartbeat_at} (${ago(k.heartbeat_at)})`], ['Note', k.note]].forEach(([a, b]) => { if (!b) return; dl.append(el('dt', null, a)); const dd = el('dd'); linkify(dd, b); dl.append(dd); }); }
     $('dlgCard').showModal();
@@ -415,12 +432,11 @@
       title: $('cTitle').value.trim(), client: $('cClient').value, column: $('cCol').value, priority: $('cPrio').value, due: $('cDue').value,
       assignees: [...$('cWho').querySelectorAll('input:checked')].map(x => x.value), labels: $('cLabels').value.split(',').map(x => x.trim()).filter(Boolean),
       details: $('cDetails').value, links: parseLinks($('cLinks').value), contacts: parseContacts($('cContacts').value),
-      issue: $('cIssue').value ? Number($('cIssue').value) : null, pr: $('cPr').value ? Number($('cPr').value) : null
     };
     if (!v.title) return; $('dlgCard').close();
     mutate(n => {
       const t = n.tasks.find(x => x.id === id); if (!t) return;
-      Object.assign(t, { title: v.title, client: v.client, priority: v.priority, due: v.due, assignees: v.assignees, labels: v.labels, details: v.details, links: v.links, contacts: v.contacts, linked_issue: v.issue, linked_pr: v.pr }); stamp(t);
+      Object.assign(t, { title: v.title, client: v.client, priority: v.priority, due: v.due, assignees: v.assignees, labels: v.labels, details: v.details, links: v.links, contacts: v.contacts }); stamp(t);
       v.labels.forEach(l => { if (!n.labels.some(x => x.name === l)) n.labels.push({ name: l, color: '#6b778c' }); });
       if (t.column !== v.column) place(n, id, v.column, null);
     }, `Edit task: ${v.title}`, [id]);

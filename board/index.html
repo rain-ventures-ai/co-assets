@@ -66,12 +66,8 @@
   <label>Labels (comma separated)</label><input id="cLabels" list="labelList"><datalist id="labelList"></datalist>
   <label>Details (notes, URLs and anything else; links become clickable)</label><textarea id="cDetails"></textarea>
   <div class="preview" id="cPreview" hidden></div>
-  <label>Links &mdash; one per line: <i>Title | https://url</i> (or just the URL)</label><textarea id="cLinks" style="min-height:60px"></textarea>
+  <label>Links &mdash; one per line: <i>Title | https://url</i> (or just the URL). GitHub issues, PRs and repos from <b>any</b> repo show as chips on the card, so you can use them to group related work.</label><textarea id="cLinks" style="min-height:60px"></textarea>
   <label>Contacts &mdash; one per line: <i>Name | role | email | phone</i></label><textarea id="cContacts" style="min-height:60px"></textarea>
-  <div class="row">
-    <div><label>Linked issue #</label><input id="cIssue" type="number" min="1"></div>
-    <div><label>Linked PR #</label><input id="cPr" type="number" min="1"></div>
-  </div>
   <div id="cClaimWrap" hidden>
     <label>Agent claim</label>
     <div class="claimbox"><dl id="cClaim" style="margin:0"></dl>
