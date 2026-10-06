@@ -364,3 +364,12 @@ html[data-style="colorful"] .pill { border-left-color: var(--cc); background: co
 html[data-style="colorful"] .sitem { box-shadow: inset 4px 0 0 var(--cc), inset -4px 0 0 var(--uc); background: linear-gradient(90deg, color-mix(in srgb, var(--cc) 8%, transparent), color-mix(in srgb, var(--uc) 8%, transparent)); margin-bottom: 4px; }
 html[data-style="colorful"] .seg button.on { background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 50%, #8e4ec6)); color: var(--on-accent); }
 @media (max-width: 760px) { html[data-style="colorful"] .legend { flex-wrap: nowrap; overflow-x: auto; padding: 6px 12px; } .lgchip, .lgl { flex: 0 0 auto; white-space: nowrap; } }
+
+/* ---- settings tabs ------------------------------------------------------- */
+dialog.settings { max-width: 520px; }
+.sethead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; } .sethead h3 { margin: 0; }
+.stabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 6px 0 4px; }
+.stabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 8px 14px; font-weight: 600; color: var(--muted); margin-bottom: -1px; }
+.stabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+dialog.settings [role="tabpanel"][hidden] { display: none; }
+@media (max-width: 760px) { .stabs button { min-height: 44px; flex: 1; } }

@@ -851,7 +851,14 @@
   $('cDelete').onclick = () => { const id = editing; if (!confirm(`Delete "${titleOf(id)}"?`)) return; const title = titleOf(id); editingDesc = false; $('dlgCard').close(); mutate(n => { n.tasks = n.tasks.filter(x => x.id !== id); }, `Delete task: ${title}`, [id]); };
 
   // ---- settings ---------------------------------------------------------------
-  $('btnSettings').onclick = () => { const c = cfg(); $('sRepo').value = c.repo; $('sBranch').value = c.branch; $('sPath').value = c.path; $('sMe').value = c.me; $('sToken').value = ''; $('sToken').placeholder = c.token ? '(token saved — leave blank to keep)' : 'github_pat_...'; $('dlgSettings').showModal(); };
+  function settingsTab(name) {
+    ['general', 'conn'].forEach(n => { const on = n === name; $(n === 'general' ? 'panelGeneral' : 'panelConn').hidden = !on; $(n === 'general' ? 'tabGeneral' : 'tabConn').setAttribute('aria-selected', String(on)); });
+    if (name === 'conn') setTimeout(() => $('sRepo').focus(), 30);
+  }
+  document.querySelectorAll('.stabs button').forEach(b => { b.onclick = () => settingsTab(b.dataset.tab); });
+  $('sClose').onclick = $('sDone').onclick = () => $('dlgSettings').close();
+  $('sMe').addEventListener('change', () => { LS.set('kb_me', $('sMe').value.trim().replace(/^@/, '')); $('sMe').value = cfg().me; render(); });   // identity saves immediately, no connect step
+  $('btnSettings').onclick = () => { const c = cfg(); settingsTab(c.token ? 'general' : 'conn'); $('sRepo').value = c.repo; $('sBranch').value = c.branch; $('sPath').value = c.path; $('sMe').value = c.me; $('sToken').value = ''; $('sToken').placeholder = c.token ? '(token saved — leave blank to keep)' : 'github_pat_...'; $('dlgSettings').showModal(); };
   const patUrl = () => { const owner = ($('sRepo').value.trim().split('/')[0] || '');
     const q = new URLSearchParams({ name: 'Team Board', description: 'Team board: read and write tasks.json', expires_in: '90', contents: 'write' });
     if (/^[\w.-]+$/.test(owner)) q.set('target_name', owner);
@@ -861,7 +868,7 @@
   $('sCancel').onclick = () => $('dlgSettings').close();
   $('sForget').onclick = () => { LS.del('kb_token'); $('dlgSettings').close(); state = DEFAULT(); sha = null; lastSyncOk = false; render(); setStatus('Token removed'); };
   $('sSave').onclick = () => {
-    LS.set('kb_repo', $('sRepo').value.trim()); LS.set('kb_branch', $('sBranch').value.trim() || 'master'); LS.set('kb_path', $('sPath').value.trim() || 'board/tasks.json'); LS.set('kb_me', $('sMe').value.trim().replace(/^@/, ''));
+    LS.set('kb_repo', $('sRepo').value.trim()); LS.set('kb_branch', $('sBranch').value.trim() || 'master'); LS.set('kb_path', $('sPath').value.trim() || 'board/tasks.json');
     if ($('sToken').value.trim()) LS.set('kb_token', $('sToken').value.trim()); $('dlgSettings').close(); load();
   };
   document.querySelectorAll('#viewSw button').forEach(b => { b.onclick = () => setView(b.dataset.view); });

@@ -39,20 +39,32 @@
   <div class="actions"><button id="cfDiscard">Discard my change</button><button id="cfApply" class="primary">Apply my change anyway</button></div>
 </dialog>
 
-<dialog id="dlgSettings">
-  <h3 style="margin-top:0">Connect to GitHub</h3>
-  <label>Repository (owner/name)</label><input id="sRepo" placeholder="owner/repo">
-  <div class="row">
-    <div><label>Branch</label><input id="sBranch" placeholder="master"></div>
-    <div><label>File path</label><input id="sPath" placeholder="board/tasks.json"></div>
+<dialog id="dlgSettings" class="settings">
+  <div class="sethead"><h3>Settings</h3><button id="sClose" class="ico" aria-label="Close settings">✕</button></div>
+  <div class="stabs" role="tablist" aria-label="Settings sections">
+    <button id="tabGeneral" role="tab" aria-selected="true" data-tab="general">General</button>
+    <button id="tabConn" role="tab" aria-selected="false" data-tab="conn">Connection</button>
   </div>
-  <div><label>Card style</label><select id="sStyle"><option value="classic">Classic</option><option value="colorful">Colourful (client and urgency colours)</option></select></div>
-  <div><label>Theme</label><select id="sTheme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="sand">Sand</option></select></div>
-  <label>Your GitHub username (recorded as the editor, and default assignee)</label><input id="sMe" placeholder="osouthgate">
-  <label>Fine-grained personal access token</label><input id="sToken" type="password" autocomplete="off" placeholder="github_pat_...">
-  <div class="hint"><a id="patLink" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Create a fine-grained token on GitHub &rarr;</a> (the link pre-fills the name, expiry and <b>Contents: Read and write</b>). On that page choose <b>Only select repositories</b> and pick just the repo that holds your board file. The token is kept only in this browser (localStorage) and is sent only to api.github.com.</div>
-  <div class="hint">Unread markers are remembered in this browser only. <button id="sMarkAll" type="button" style="padding:2px 8px;font-size:12px">Mark all as read</button></div>
-  <div class="actions"><button id="sForget" class="danger">Forget token</button><button id="sCancel">Cancel</button><button id="sSave" class="primary">Save &amp; connect</button></div>
+
+  <div id="panelGeneral" role="tabpanel" aria-labelledby="tabGeneral">
+    <p class="hint" style="margin-top:0">These apply straight away and are remembered in this browser.</p>
+    <div><label for="sStyle">Card style</label><select id="sStyle"><option value="classic">Classic</option><option value="colorful">Colourful (client and urgency colours)</option></select></div>
+    <div><label for="sTheme">Theme</label><select id="sTheme"><option value="auto">Auto (follows your device)</option><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="sand">Sand</option></select></div>
+    <div><label for="sMe">Your GitHub username</label><input id="sMe" placeholder="osouthgate" autocomplete="off"><div class="hint">Recorded as the author of your edits and comments, and used for unread markers and the default assignee.</div></div>
+    <div><label>Unread markers</label><button id="sMarkAll" type="button">Mark all cards as read</button></div>
+    <div class="actions"><button id="sDone" class="primary">Done</button></div>
+  </div>
+
+  <div id="panelConn" role="tabpanel" aria-labelledby="tabConn" hidden>
+    <label for="sRepo">Repository (owner/name)</label><input id="sRepo" placeholder="owner/repo">
+    <div class="row">
+      <div><label for="sBranch">Branch</label><input id="sBranch" placeholder="master"></div>
+      <div><label for="sPath">File path</label><input id="sPath" placeholder="board/tasks.json"></div>
+    </div>
+    <label for="sToken">Fine-grained personal access token</label><input id="sToken" type="password" autocomplete="off" placeholder="github_pat_...">
+    <div class="hint"><a id="patLink" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Create a fine-grained token on GitHub &rarr;</a> (the link pre-fills the name, expiry and <b>Contents: Read and write</b>). Choose <b>Only select repositories</b> and pick just the repo that holds your board file. If the repo belongs to an organisation, set <b>Resource owner</b> to that organisation. The token is kept only in this browser (localStorage) and is sent only to api.github.com.</div>
+    <div class="actions"><button id="sForget" class="danger">Forget token</button><span class="spacer"></span><button id="sCancel">Cancel</button><button id="sSave" class="primary">Save &amp; connect</button></div>
+  </div>
 </dialog>
 
 <dialog id="dlgCard" class="drawer" aria-label="Task details">
