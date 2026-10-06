@@ -145,7 +145,7 @@
     people: [], agents: ['claude', 'codex'], clients: ['General'], labels: [], tasks: []
   });
 
-  let state = DEFAULT(), sha = null, busy = false, lastSyncOk = false;
+  let state = DEFAULT(), sha = null, etag = null, busy = false, lastSyncOk = false;
   const $ = id => document.getElementById(id);
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const b64e = s => { const b = new TextEncoder().encode(s); let r = ''; b.forEach(x => r += String.fromCharCode(x)); return btoa(r); };
@@ -180,11 +180,11 @@
     return n;
   }
 
-  async function gh(method, body) {
+  async function gh(method, body, cond) {
     const c = cfg();
     const url = `${c.api}/repos/${c.repo}/contents/${c.path.split('/').map(encodeURIComponent).join('/')}` + (method === 'GET' ? `?ref=${encodeURIComponent(c.branch)}` : '');
     return fetch(url, { method, cache: 'no-store', body: body ? JSON.stringify(body) : undefined,
-      headers: { Authorization: `Bearer ${c.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(body ? { 'Content-Type': 'application/json' } : {}) } });
+      headers: { Authorization: `Bearer ${c.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cond && etag ? { 'If-None-Match': etag } : {}) } });
   }
 
   async function load(quiet) {
@@ -192,11 +192,12 @@
     if (!c.token) { setStatus('Not connected. Open Settings.', 'err'); render(); return false; }
     if (!quiet) setStatus('Loading…');
     try {
-      const res = await gh('GET');
+      const res = await gh('GET', null, !!quiet);   // background polls are conditional: a 304 is free and does not count against the rate limit
+      if (res.status === 304) { setStatus('Synced ' + new Date().toLocaleTimeString() + ' (no changes)', 'ok'); return true; }
       if (res.status === 404) { await diagnose404(); return false; }
       if (res.status === 401 || res.status === 403) { setStatus('Token rejected or lacks access', 'err'); return false; }
       if (!res.ok) { setStatus(`GitHub error ${res.status}`, 'err'); return false; }
-      const data = await res.json(); sha = data.sha; state = normalise(JSON.parse(b64d(data.content))); lastSyncOk = true;
+      const data = await res.json(); sha = data.sha; etag = res.headers.get('ETag'); state = normalise(JSON.parse(b64d(data.content))); lastSyncOk = true;
       setStatus('Synced ' + new Date().toLocaleTimeString(), 'ok'); render(); return true;
     } catch (e) { console.error(e); setStatus('Network or parse error', 'err'); return false; }
   }
@@ -229,7 +230,7 @@
   async function save(next, message) {
     const body = { message, content: b64e(JSON.stringify(next, null, 2) + '\n'), branch: cfg().branch }; if (sha) body.sha = sha;
     const res = await gh('PUT', body);
-    if (res.ok) { sha = (await res.json()).content.sha; state = next; return 'ok'; }
+    if (res.ok) { sha = (await res.json()).content.sha; etag = null; state = next; return 'ok'; }
     return (res.status === 409 || res.status === 422) ? 'conflict' : 'error:' + res.status;
   }
 
@@ -424,7 +425,9 @@
   };
   $('btnRefresh').onclick = () => load();
   ['fClient', 'fWho', 'fLabel', 'fPrio', 'fAttn', 'fHideDone'].forEach(i => $(i).addEventListener('change', render));
-  setInterval(() => { if (!busy && !document.hidden && !document.querySelector('dialog[open]') && lastSyncOk) load(true); }, 30000);
+  const canPoll = () => !busy && !document.hidden && !document.querySelector('dialog[open]') && !document.querySelector('.card.dragging') && lastSyncOk;
+  setInterval(() => { if (canPoll()) load(true); }, 30000);   // conditional (ETag) so unchanged polls are 304s
+  document.addEventListener('visibilitychange', () => { if (canPoll()) load(true); });  // catch up as soon as the tab is shown again
   setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) render(); }, 60000); // refresh "ago" and stale flags
 
   render();
