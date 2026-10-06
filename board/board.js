@@ -447,8 +447,8 @@
   function renderStats() {
     const attn = state.tasks.filter(t => t.column !== doneColId() && needsAttention(t)).length;
     const attnTasks = state.tasks.filter(t => t.column !== doneColId() && needsAttention(t)), on = $('fAttn').checked, ab = $('btnAttn');
-    ab.hidden = !attn && !on; $('attnN').textContent = String(attn); $('attnT').textContent = on ? ' needs attention ✕' : (attn === 1 ? ' needs attention' : ' need attention'); $('attnS').textContent = on ? ' attention ✕' : ' attention'; ab.classList.toggle('on', on); $('attnCount').textContent = attn ? `(${attn})` : '';
-    ab.title = (on ? 'Showing only cards that need attention: click to show everything.\n' : 'Overdue, or an agent claim that is stale, stuck or blocked. Click to show only these.\n') + attnTasks.slice(0, 4).map(t => '• ' + t.title).join('\n') + (attnTasks.length > 4 ? `\n…and ${attnTasks.length - 4} more` : '');
+    ab.hidden = !attn && !on; $('attnN').textContent = String(attn); $('attnT').textContent = attn === 1 ? ' needs attention' : ' need attention'; $('attnS').textContent = ' attention'; ab.setAttribute('role', 'switch'); ab.setAttribute('aria-checked', String(on)); ab.classList.toggle('on', on); $('attnCount').textContent = attn ? `(${attn})` : '';
+    ab.title = (on ? 'ON: showing only cards that need attention. Click to switch off.\n' : 'OFF: showing all cards. Click to show only cards that are overdue or have a stale, stuck or blocked agent.\n') + attnTasks.slice(0, 4).map(t => '• ' + t.title).join('\n') + (attnTasks.length > 4 ? `\n…and ${attnTasks.length - 4} more` : '');
     const fresh = state.tasks.filter(isFresh).length, bell = $('btnUnread'), bd = $('unreadBadge');
     bd.textContent = fresh > 99 ? '99+' : String(fresh); bd.hidden = !fresh; bell.classList.toggle('on', freshOnly);
     bell.title = fresh ? `${fresh} card${fresh > 1 ? 's' : ''} with new comments or changes${freshOnly ? ' (showing only these; click to show all)' : ' (click to show only these)'}` : (cfg().me ? 'Nothing new' : 'Set your GitHub username in Settings to see unread markers');
