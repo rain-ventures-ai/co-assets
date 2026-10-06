@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team Board</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ebecf0; --card: #ffffff; --text: #172b4d; --muted: #6b778c;
+    --accent: #0c66e4; --border: #dcdfe4; --danger: #c9372c; --ok: #1f845a; --warn: #b38600;
+    --shadow: 0 1px 2px rgba(9,30,66,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1d2125; --panel: #22272b; --card: #2c333a; --text: #dee4ea; --muted: #9fadbc;
+      --accent: #579dff; --border: #38414a; --danger: #f87168; --ok: #4bce97; --warn: #e2b203; --shadow: 0 1px 2px rgba(0,0,0,.5); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 16px; margin: 0; }
+  header label { font-size: 12px; color: var(--muted); display: flex; gap: 5px; align-items: center; }
+  .spacer { flex: 1; }
+  select, input, textarea, button { font: inherit; color: inherit; }
+  select, input, textarea { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; }
+  button { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 5px 10px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); } button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.danger { color: var(--danger); }
+  #status { font-size: 12px; color: var(--muted); } #status.err { color: var(--danger); } #status.ok { color: var(--ok); }
+  #board { flex: 1; display: flex; gap: 12px; padding: 14px 16px; overflow-x: auto; align-items: flex-start; }
+  .col { background: var(--panel); border-radius: 6px; width: 310px; min-width: 270px; display: flex; flex-direction: column; max-height: 100%; }
+  .col.over { outline: 2px dashed var(--accent); }
+  .col h2 { margin: 0; padding: 10px 12px 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); display: flex; justify-content: space-between; }
+  .cards { padding: 4px 8px 8px; overflow-y: auto; min-height: 40px; flex: 1; }
+  .card { background: var(--card); border-radius: 4px; padding: 9px 10px; margin-bottom: 8px; box-shadow: var(--shadow); cursor: grab; border-left: 4px solid var(--border); }
+  .card.p-high { border-left-color: var(--danger); } .card.p-medium { border-left-color: var(--warn); } .card.p-low { border-left-color: var(--ok); }
+  .card.dragging { opacity: .4; }
+  .card .t { font-weight: 600; word-break: break-word; }
+  .card .n { color: var(--muted); font-size: 12px; margin-top: 3px; white-space: pre-wrap; max-height: 3.6em; overflow: hidden; word-break: break-word; }
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; font-size: 11px; align-items: center; }
+  .tag { background: var(--panel); border-radius: 10px; padding: 1px 8px; color: var(--muted); }
+  .tag.label { color: #fff; } .tag.late { background: var(--danger); color: #fff; }
+  .tag.who { color: var(--text); } .tag.meta { color: var(--muted); }
+  .claim { margin-top: 7px; font-size: 11px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); }
+  .claim.running { border-color: var(--ok); } .claim.stale, .claim.blocked { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); }
+  .claim.stuck { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 15%, transparent); } .claim.done { border-color: var(--border); color: var(--muted); }
+  .moves { display: flex; gap: 4px; margin-top: 7px; } .moves button { padding: 0 7px; font-size: 12px; }
+  .add { padding: 8px; border-top: 1px solid var(--border); display: flex; gap: 6px; } .add input { flex: 1; min-width: 0; }
+  dialog { border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); max-width: 560px; width: 94vw; padding: 18px; max-height: 92vh; overflow: auto; }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 3px; }
+  dialog input:not([type=checkbox]), dialog textarea, dialog select { width: 100%; } dialog textarea { min-height: 80px; resize: vertical; }
+  .row { display: flex; gap: 10px; } .row > * { flex: 1; }
+  .checks { display: flex; gap: 14px; flex-wrap: wrap; } .checks label { display: flex; gap: 5px; align-items: center; margin: 0; color: var(--text); font-size: 13px; }
+  .actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .preview { font-size: 13px; background: var(--panel); border-radius: 4px; padding: 6px 8px; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+  .preview a, .lnk a { color: var(--accent); }
+  .claimbox { background: var(--panel); border-radius: 4px; padding: 8px 10px; font-size: 12px; margin-top: 4px; }
+  .claimbox dt { color: var(--muted); float: left; clear: left; width: 110px; } .claimbox dd { margin: 0 0 2px 110px; word-break: break-all; }
+  .empty { padding: 40px; color: var(--muted); }
+  @media (max-width: 700px) { .col { width: 84vw; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Team Board</h1>
+  <label>Client <select id="fClient"></select></label>
+  <label>Assignee <select id="fWho"></select></label>
+  <label>Label <select id="fLabel"></select></label>
+  <label>Priority <select id="fPrio"><option value="">All</option><option>high</option><option>medium</option><option>low</option></select></label>
+  <label><input type="checkbox" id="fAttn"> Needs attention</label>
+  <label><input type="checkbox" id="fHideDone"> Hide done</label>
+  <span class="spacer"></span>
+  <span id="status">Not connected</span>
+  <button id="btnRefresh" title="Reload from GitHub">Refresh</button>
+  <button id="btnSettings">Settings</button>
+</header>
+<div id="board"></div>
+
+<dialog id="dlgSettings">
+  <h3 style="margin-top:0">Connect to GitHub</h3>
+  <label>Repository (owner/name)</label><input id="sRepo" placeholder="owner/repo">
+  <div class="row">
+    <div><label>Branch</label><input id="sBranch" placeholder="master"></div>
+    <div><label>File path</label><input id="sPath" placeholder="tasks.json"></div>
+  </div>
+  <label>Your GitHub username (recorded as the editor, and default assignee)</label><input id="sMe" placeholder="osouthgate">
+  <label>Fine-grained personal access token</label><input id="sToken" type="password" autocomplete="off" placeholder="github_pat_...">
+  <div class="hint">Create it at GitHub &rarr; Settings &rarr; Developer settings &rarr; Fine-grained tokens. Limit it to this one repository with <b>Contents: Read and write</b>. It is kept only in this browser (localStorage) and is sent only to api.github.com.</div>
+  <div class="actions"><button id="sForget" class="danger">Forget token</button><button id="sCancel">Cancel</button><button id="sSave" class="primary">Save &amp; connect</button></div>
+</dialog>
+
+<dialog id="dlgCard">
+  <h3 style="margin-top:0" id="cardHeading">Task</h3>
+  <label>Title</label><input id="cTitle">
+  <div class="row">
+    <div><label>Client</label><select id="cClient"></select></div>
+    <div><label>Column</label><select id="cCol"></select></div>
+  </div>
+  <label>Assignees (GitHub users)</label><div class="checks" id="cWho"></div>
+  <div class="row">
+    <div><label>Priority</label><select id="cPrio"><option>high</option><option>medium</option><option>low</option></select></div>
+    <div><label>Due by</label><input id="cDue" type="date"></div>
+  </div>
+  <label>Labels (comma separated)</label><input id="cLabels" list="labelList"><datalist id="labelList"></datalist>
+  <label>Details (notes, URLs and anything else; links become clickable)</label><textarea id="cDetails"></textarea>
+  <div class="preview" id="cPreview" hidden></div>
+  <label>Links &mdash; one per line: <i>Title | https://url</i> (or just the URL)</label><textarea id="cLinks" style="min-height:60px"></textarea>
+  <label>Contacts &mdash; one per line: <i>Name | role | email | phone</i></label><textarea id="cContacts" style="min-height:60px"></textarea>
+  <div class="row">
+    <div><label>Linked issue #</label><input id="cIssue" type="number" min="1"></div>
+    <div><label>Linked PR #</label><input id="cPr" type="number" min="1"></div>
+  </div>
+  <div id="cClaimWrap" hidden>
+    <label>Agent claim</label>
+    <div class="claimbox"><dl id="cClaim" style="margin:0"></dl>
+      <div class="actions" style="margin-top:8px;justify-content:flex-start">
+        <button id="cStuck">Mark stuck</button><button id="cRelease" class="danger">Release claim</button>
+      </div>
+    </div>
+  </div>
+  <div class="actions"><button id="cDelete" class="danger">Delete</button><span class="spacer"></span><button id="cCancel">Cancel</button><button id="cSave" class="primary">Save</button></div>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+  const LS = {
+    get(k, d = '') { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} }
+  };
+  const cfg = () => ({
+    repo: LS.get('kb_repo', ''), branch: LS.get('kb_branch', 'master'), path: LS.get('kb_path', 'tasks.json'),
+    token: LS.get('kb_token'), me: LS.get('kb_me', ''), api: LS.get('kb_api', 'https://api.github.com') // api override is for local testing only
+  });
+  // Optional first-run prefill from the link: ?repo=owner/name&branch=main&path=tasks.json (never the token)
+  (() => { const q = new URLSearchParams(location.search);
+    ['repo', 'branch', 'path'].forEach(k => { const v = q.get(k); if (!v || LS.get('kb_' + k)) return;
+      if (k === 'repo' ? /^[\w.-]+\/[\w.-]+$/.test(v) : /^[\w./-]+$/.test(v)) LS.set('kb_' + k, v); }); })();
+  const DEFAULT = () => ({
+    version: 2, settings: { stale_after_minutes: 30 },
+    columns: [{ id: 'backlog', name: 'Backlog' }, { id: 'todo', name: 'To do' }, { id: 'in-progress', name: 'In progress' }, { id: 'done', name: 'Done' }],
+    people: [], agents: ['claude', 'codex'], clients: ['General'], labels: [], tasks: []
+  });
+
+  let state = DEFAULT(), sha = null, busy = false, lastSyncOk = false;
+  const $ = id => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const b64e = s => { const b = new TextEncoder().encode(s); let r = ''; b.forEach(x => r += String.fromCharCode(x)); return btoa(r); };
+  const b64d = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\s/g, '')), c => c.charCodeAt(0)));
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const nowIso = () => new Date().toISOString();
+  const setStatus = (m, k = '') => { const s = $('status'); s.textContent = m; s.className = k; };
+  const safeUrl = u => { try { const x = new URL(u); return (x.protocol === 'https:' || x.protocol === 'http:') ? x.href : null; } catch { return null; } };
+
+  function linkify(parent, text) { // build DOM (no innerHTML): plain text plus safe http(s) links
+    String(text || '').split(/(https?:\/\/[^\s<>"')]+)/g).forEach((part, i) => {
+      if (i % 2 === 1 && safeUrl(part)) { const a = el('a', null, part); a.href = safeUrl(part); a.target = '_blank'; a.rel = 'noopener noreferrer'; parent.append(a); }
+      else if (part) parent.append(document.createTextNode(part));
+    });
+  }
+
+  function normalise(obj) {
+    const d = DEFAULT(), o = obj && typeof obj === 'object' ? obj : {};
+    const people = Array.isArray(o.people) ? o.people : [];
+    const n = {
+      version: 2, settings: Object.assign(d.settings, o.settings || {}),
+      columns: Array.isArray(o.columns) && o.columns.length ? o.columns : d.columns, people,
+      agents: Array.isArray(o.agents) ? o.agents : d.agents, clients: Array.isArray(o.clients) && o.clients.length ? o.clients : d.clients,
+      labels: Array.isArray(o.labels) ? o.labels : [], tasks: Array.isArray(o.tasks) ? o.tasks : []
+    };
+    n.tasks.forEach(t => { // tolerate v1 cards
+      if (!Array.isArray(t.assignees)) { const p = people.find(p => p.name === t.owner || p.github === t.owner); t.assignees = p ? [p.github] : []; }
+      if (!Array.isArray(t.labels)) t.labels = []; if (!Array.isArray(t.links)) t.links = []; if (!Array.isArray(t.contacts)) t.contacts = [];
+      if (t.details == null) t.details = t.notes || '';
+      if (t.claim === undefined) t.claim = null; if (t.linked_pr === undefined) t.linked_pr = null;
+    });
+    return n;
+  }
+
+  async function gh(method, body) {
+    const c = cfg();
+    const url = `${c.api}/repos/${c.repo}/contents/${c.path.split('/').map(encodeURIComponent).join('/')}` + (method === 'GET' ? `?ref=${encodeURIComponent(c.branch)}` : '');
+    return fetch(url, { method, cache: 'no-store', body: body ? JSON.stringify(body) : undefined,
+      headers: { Authorization: `Bearer ${c.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(body ? { 'Content-Type': 'application/json' } : {}) } });
+  }
+
+  async function load(quiet) {
+    const c = cfg();
+    if (!c.token) { setStatus('Not connected. Open Settings.', 'err'); render(); return false; }
+    if (!quiet) setStatus('Loading…');
+    try {
+      const res = await gh('GET');
+      if (res.status === 404) { setStatus(`${c.path} not found`, 'err'); offerCreate(); return false; }
+      if (res.status === 401 || res.status === 403) { setStatus('Token rejected or lacks access', 'err'); return false; }
+      if (!res.ok) { setStatus(`GitHub error ${res.status}`, 'err'); return false; }
+      const data = await res.json(); sha = data.sha; state = normalise(JSON.parse(b64d(data.content))); lastSyncOk = true;
+      setStatus('Synced ' + new Date().toLocaleTimeString(), 'ok'); render(); return true;
+    } catch (e) { console.error(e); setStatus('Network or parse error', 'err'); return false; }
+  }
+
+  function offerCreate() {
+    const board = $('board'); board.textContent = ''; const box = el('div', 'empty');
+    box.append(el('p', null, `${cfg().path} does not exist on ${cfg().branch} yet.`));
+    const b = el('button', 'primary', 'Create it with an empty board');
+    b.onclick = async () => { state = DEFAULT(); sha = null; await save(clone(state), 'Create tasks.json for board'); render(); };
+    box.append(b); board.append(box);
+  }
+
+  async function save(next, message) {
+    const body = { message, content: b64e(JSON.stringify(next, null, 2) + '\n'), branch: cfg().branch }; if (sha) body.sha = sha;
+    const res = await gh('PUT', body);
+    if (res.ok) { sha = (await res.json()).content.sha; state = next; return 'ok'; }
+    return (res.status === 409 || res.status === 422) ? 'conflict' : 'error:' + res.status;
+  }
+
+  // Apply an edit to the LATEST file on GitHub (never overwrite with stale state); retry on a SHA conflict.
+  async function mutate(fn, message) {
+    if (busy) { setStatus('Busy, try again', 'err'); return; }
+    busy = true; const before = clone(state);
+    try {
+      const o = clone(state); fn(o); state = o; render(); // optimistic
+      for (let i = 0; i < 4; i++) {
+        const res = await gh('GET');
+        if (!res.ok && res.status !== 404) { setStatus(`GitHub error ${res.status}`, 'err'); state = before; render(); return; }
+        let latest = DEFAULT();
+        if (res.ok) { const d = await res.json(); sha = d.sha; latest = normalise(JSON.parse(b64d(d.content))); } else sha = null;
+        fn(latest);
+        const out = await save(latest, message);
+        if (out === 'ok') { setStatus('Saved ' + new Date().toLocaleTimeString(), 'ok'); render(); return; }
+        if (out !== 'conflict') { setStatus('Save failed (' + out + ')', 'err'); state = before; render(); return; }
+        setStatus('Someone else changed the board, retrying…', 'err');
+      }
+      setStatus('Could not save after retries', 'err'); await load(true);
+    } catch (e) { console.error(e); setStatus('Save failed', 'err'); state = before; render(); } finally { busy = false; }
+  }
+
+  const uid = () => 't_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const me = () => cfg().me;
+  const stamp = t => { t.updated = nowIso(); if (me()) t.updatedBy = me(); };
+
+  // ---- claims -----------------------------------------------------------
+  function claimState(c) {
+    if (!c) return null;
+    if (c.status === 'done' || c.status === 'stuck' || c.status === 'blocked') return c.status;
+    const mins = (Date.now() - Date.parse(c.heartbeat_at || c.claimed_at)) / 60000;
+    return mins > (state.settings.stale_after_minutes || 30) ? 'stale' : 'running';
+  }
+  const ago = iso => { const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return m < 1 ? 'just now' : m < 60 ? m + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago'; };
+  const needsAttention = t => { const cs = claimState(t.claim); const late = t.due && t.column !== 'done' && t.due < new Date().toISOString().slice(0, 10); return late || cs === 'stale' || cs === 'stuck' || cs === 'blocked'; };
+
+  // ---- filters / render ---------------------------------------------------
+  function fillSelect(sel, items, allLabel) { // items: [value,label]
+    const cur = sel.value; sel.textContent = '';
+    if (allLabel != null) { const o = el('option', null, allLabel); o.value = ''; sel.append(o); }
+    items.forEach(([v, l]) => { const o = el('option', null, l); o.value = v; sel.append(o); });
+    if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+  }
+  function filtered(t) {
+    const fc = $('fClient').value, fw = $('fWho').value, fl = $('fLabel').value, fp = $('fPrio').value;
+    if (fc && t.client !== fc) return false;
+    if (fw === '__none' && t.assignees.length) return false;
+    if (fw === '__agent' && !t.claim) return false;
+    if (fw && fw[0] !== '_' && !t.assignees.includes(fw)) return false;
+    if (fl && !t.labels.includes(fl)) return false;
+    if (fp && t.priority !== fp) return false;
+    if ($('fAttn').checked && !needsAttention(t)) return false;
+    return true;
+  }
+  const labelColor = n => (state.labels.find(l => l.name === n) || {}).color || '#6b778c';
+
+  function render() {
+    fillSelect($('fClient'), state.clients.map(c => [c, c]), 'All');
+    fillSelect($('fWho'), [...state.people.map(p => [p.github, '@' + p.github]), ['__none', 'Unassigned'], ['__agent', 'Claimed by an agent']], 'Everyone');
+    fillSelect($('fLabel'), state.labels.map(l => [l.name, l.name]), 'All');
+    const board = $('board'); board.textContent = ''; const hideDone = $('fHideDone').checked;
+    state.columns.forEach((col, ci) => {
+      if (hideDone && col.id === 'done') return;
+      const items = state.tasks.filter(t => t.column === col.id && filtered(t));
+      const c = el('section', 'col'); const h = el('h2'); h.append(el('span', null, col.name), el('span', null, String(items.length))); c.append(h);
+      const cards = el('div', 'cards');
+      cards.addEventListener('dragover', e => { e.preventDefault(); c.classList.add('over'); });
+      cards.addEventListener('dragleave', () => c.classList.remove('over'));
+      cards.addEventListener('drop', e => { e.preventDefault(); c.classList.remove('over'); dropOn(e, col.id, null); });
+      items.forEach(t => cards.append(cardEl(t, ci))); c.append(cards);
+      const add = el('div', 'add'), inp = el('input'), btn = el('button', 'primary', 'Add'); inp.placeholder = 'Add a task…';
+      const go = () => { const v = inp.value.trim(); if (!v) return; inp.value = ''; addTask(v, col.id); };
+      btn.onclick = go; inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+      add.append(inp, btn); c.append(add); board.append(c);
+    });
+  }
+
+  function cardEl(t, ci) {
+    const c = el('div', 'card' + (t.priority ? ' p-' + t.priority : '')); c.draggable = true;
+    c.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', t.id); c.classList.add('dragging'); });
+    c.addEventListener('dragend', () => c.classList.remove('dragging'));
+    c.addEventListener('dragover', e => e.preventDefault());
+    c.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); dropOn(e, t.column, t.id); });
+    c.addEventListener('dblclick', () => openCard(t.id));
+    c.append(el('div', 't', t.title));
+    if (t.details) c.append(el('div', 'n', t.details));
+    const tags = el('div', 'tags');
+    t.labels.forEach(l => { const s = el('span', 'tag label', l); s.style.background = labelColor(l); tags.append(s); });
+    if (t.client) tags.append(el('span', 'tag meta', t.client));
+    t.assignees.forEach(a => tags.append(el('span', 'tag who', '@' + a)));
+    if (t.due) { const late = t.column !== 'done' && t.due < new Date().toISOString().slice(0, 10); tags.append(el('span', 'tag' + (late ? ' late' : ' meta'), 'Due ' + t.due)); }
+    if (t.links.length) tags.append(el('span', 'tag meta', '🔗 ' + t.links.length));
+    if (t.contacts.length) tags.append(el('span', 'tag meta', '👤 ' + t.contacts.length));
+    if (t.linked_issue) { const s = el('span', 'tag'); const a = el('a', null, 'Issue #' + t.linked_issue); a.href = `https://github.com/${cfg().repo}/issues/${encodeURIComponent(t.linked_issue)}`; a.target = '_blank'; a.rel = 'noopener'; s.append(a); tags.append(s); }
+    if (t.linked_pr) { const s = el('span', 'tag'); const a = el('a', null, 'PR #' + t.linked_pr); a.href = `https://github.com/${cfg().repo}/pull/${encodeURIComponent(t.linked_pr)}`; a.target = '_blank'; a.rel = 'noopener'; s.append(a); tags.append(s); }
+    c.append(tags);
+    if (t.claim) {
+      const st = claimState(t.claim), k = t.claim;
+      const b = el('div', 'claim ' + st, `🤖 ${k.agent}${k.on_behalf_of ? ' for @' + k.on_behalf_of : ''} · ${st.toUpperCase()} · beat ${ago(k.heartbeat_at || k.claimed_at)}`);
+      if (k.note) b.append(el('div', null, k.note));
+      b.title = `session ${k.session_id || '?'} on ${k.host || '?'}\n${k.cwd || ''}\n${k.branch || ''}`; c.append(b);
+    }
+    const mv = el('div', 'moves'), left = el('button', null, '◀'), right = el('button', null, '▶'), edit = el('button', null, 'Edit');
+    left.title = 'Move left'; right.title = 'Move right'; left.disabled = ci === 0; right.disabled = ci === state.columns.length - 1;
+    left.onclick = () => moveTo(t.id, state.columns[ci - 1].id); right.onclick = () => moveTo(t.id, state.columns[ci + 1].id); edit.onclick = () => openCard(t.id);
+    mv.append(left, right, edit); c.append(mv); return c;
+  }
+
+  function place(n, id, colId, beforeId) {
+    const i = n.tasks.findIndex(x => x.id === id); if (i < 0) return;
+    const [t] = n.tasks.splice(i, 1); t.column = colId; stamp(t);
+    let at = beforeId ? n.tasks.findIndex(x => x.id === beforeId) : -1;
+    if (at < 0) { let last = -1; n.tasks.forEach((x, k) => { if (x.column === colId) last = k; }); at = last + 1; }
+    n.tasks.splice(at, 0, t);
+  }
+  const titleOf = id => (state.tasks.find(x => x.id === id) || {}).title || id;
+  const moveTo = (id, col) => mutate(n => place(n, id, col, null), `Move "${titleOf(id)}" to ${col}`);
+  function dropOn(e, col, beforeId) { const id = e.dataTransfer.getData('text/plain'); if (!id || id === beforeId) return; mutate(n => place(n, id, col, beforeId), `Move "${titleOf(id)}" to ${col}`); }
+  function addTask(title, col) {
+    const fc = $('fClient').value, w = $('fWho').value;
+    const mine = me() && state.people.some(p => p.github.toLowerCase() === me().toLowerCase()) ? [state.people.find(p => p.github.toLowerCase() === me().toLowerCase()).github] : [];
+    const as = w && w[0] !== '_' ? [w] : (w === '__none' ? [] : mine);
+    const t = { id: uid(), title, column: col, client: fc || state.clients[0], priority: 'medium', due: '', labels: [], assignees: as, details: '', links: [], contacts: [], linked_issue: null, linked_pr: null, claim: null, created: nowIso(), updated: nowIso() };
+    if (me()) { t.createdBy = me(); t.updatedBy = me(); }
+    mutate(n => { n.tasks.push(t); }, `Add task: ${title}`);
+  }
+
+  // ---- edit dialog ----------------------------------------------------------
+  let editing = null;
+  const parseLinks = txt => txt.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const p = l.split('|').map(x => x.trim()); const url = p.length > 1 ? p.slice(1).join('|').trim() : p[0]; return { title: p.length > 1 ? p[0] : url, url }; }).filter(x => safeUrl(x.url));
+  const parseContacts = txt => txt.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const p = l.split('|').map(x => x.trim()); return { name: p[0] || '', role: p[1] || '', email: p[2] || '', phone: p[3] || '' }; });
+  const linksText = ls => (ls || []).map(l => l.title && l.title !== l.url ? `${l.title} | ${l.url}` : l.url).join('\n');
+  const contactsText = cs => (cs || []).map(c => [c.name, c.role, c.email, c.phone].join(' | ').replace(/( \| )+$/, '')).join('\n');
+
+  function updatePreview() {
+    const p = $('cPreview'), txt = $('cDetails').value; p.textContent = '';
+    p.hidden = !/https?:\/\//.test(txt); if (!p.hidden) linkify(p, txt);
+  }
+  function openCard(id) {
+    const t = state.tasks.find(x => x.id === id); if (!t) return; editing = id;
+    $('cardHeading').textContent = 'Task';
+    fillSelect($('cClient'), state.clients.map(c => [c, c])); $('cClient').value = t.client;
+    fillSelect($('cCol'), state.columns.map(c => [c.id, c.name])); $('cCol').value = t.column;
+    const w = $('cWho'); w.textContent = '';
+    state.people.concat((t.assignees || []).filter(a => !state.people.some(p => p.github === a)).map(a => ({ github: a, name: a }))).forEach(p => {
+      const l = el('label'); const cb = el('input'); cb.type = 'checkbox'; cb.value = p.github; cb.checked = t.assignees.includes(p.github); l.append(cb, document.createTextNode('@' + p.github + (p.name && p.name !== p.github ? ` (${p.name})` : ''))); w.append(l);
+    });
+    $('cTitle').value = t.title; $('cPrio').value = t.priority || 'medium'; $('cDue').value = t.due || '';
+    $('cLabels').value = t.labels.join(', '); $('labelList').textContent = ''; state.labels.forEach(l => { const o = el('option'); o.value = l.name; $('labelList').append(o); });
+    $('cDetails').value = t.details || ''; $('cLinks').value = linksText(t.links); $('cContacts').value = contactsText(t.contacts);
+    $('cIssue').value = t.linked_issue || ''; $('cPr').value = t.linked_pr || ''; updatePreview();
+    const wrap = $('cClaimWrap'); wrap.hidden = !t.claim; const dl = $('cClaim'); dl.textContent = '';
+    if (t.claim) { const k = t.claim, st = claimState(k); [['Agent', k.agent], ['On behalf of', k.on_behalf_of && '@' + k.on_behalf_of], ['State', st], ['Session', k.session_id], ['Session URL', k.session_url], ['Host', k.host], ['Working dir', k.cwd], ['Branch', k.branch], ['Claimed', k.claimed_at && `${k.claimed_at} (${ago(k.claimed_at)})`], ['Last heartbeat', k.heartbeat_at && `${k.heartbeat_at} (${ago(k.heartbeat_at)})`], ['Note', k.note]].forEach(([a, b]) => { if (!b) return; dl.append(el('dt', null, a)); const dd = el('dd'); linkify(dd, b); dl.append(dd); }); }
+    $('dlgCard').showModal();
+  }
+  $('cDetails').addEventListener('input', updatePreview);
+  $('cCancel').onclick = () => $('dlgCard').close();
+  $('cSave').onclick = () => {
+    const id = editing, v = {
+      title: $('cTitle').value.trim(), client: $('cClient').value, column: $('cCol').value, priority: $('cPrio').value, due: $('cDue').value,
+      assignees: [...$('cWho').querySelectorAll('input:checked')].map(x => x.value), labels: $('cLabels').value.split(',').map(x => x.trim()).filter(Boolean),
+      details: $('cDetails').value, links: parseLinks($('cLinks').value), contacts: parseContacts($('cContacts').value),
+      issue: $('cIssue').value ? Number($('cIssue').value) : null, pr: $('cPr').value ? Number($('cPr').value) : null
+    };
+    if (!v.title) return; $('dlgCard').close();
+    mutate(n => {
+      const t = n.tasks.find(x => x.id === id); if (!t) return;
+      Object.assign(t, { title: v.title, client: v.client, priority: v.priority, due: v.due, assignees: v.assignees, labels: v.labels, details: v.details, links: v.links, contacts: v.contacts, linked_issue: v.issue, linked_pr: v.pr }); stamp(t);
+      v.labels.forEach(l => { if (!n.labels.some(x => x.name === l)) n.labels.push({ name: l, color: '#6b778c' }); });
+      if (t.column !== v.column) place(n, id, v.column, null);
+    }, `Edit task: ${v.title}`);
+  };
+  $('cDelete').onclick = () => { const id = editing; if (!confirm(`Delete "${titleOf(id)}"?`)) return; const title = titleOf(id); $('dlgCard').close(); mutate(n => { n.tasks = n.tasks.filter(x => x.id !== id); }, `Delete task: ${title}`); };
+  $('cStuck').onclick = () => { const id = editing; $('dlgCard').close(); mutate(n => { const t = n.tasks.find(x => x.id === id); if (t && t.claim) { t.claim.status = 'stuck'; t.claim.note = (t.claim.note ? t.claim.note + ' | ' : '') + `marked stuck by ${me() || 'human'}`; stamp(t); } }, `Mark stuck: ${titleOf(id)}`); };
+  $('cRelease').onclick = () => { const id = editing; if (!confirm('Release the agent claim? The agent session may still be running.')) return; $('dlgCard').close(); mutate(n => { const t = n.tasks.find(x => x.id === id); if (t) { t.claim = null; stamp(t); } }, `Release claim: ${titleOf(id)}`); };
+
+  // ---- settings ---------------------------------------------------------------
+  $('btnSettings').onclick = () => { const c = cfg(); $('sRepo').value = c.repo; $('sBranch').value = c.branch; $('sPath').value = c.path; $('sMe').value = c.me; $('sToken').value = ''; $('sToken').placeholder = c.token ? '(token saved — leave blank to keep)' : 'github_pat_...'; $('dlgSettings').showModal(); };
+  $('sCancel').onclick = () => $('dlgSettings').close();
+  $('sForget').onclick = () => { LS.del('kb_token'); $('dlgSettings').close(); state = DEFAULT(); sha = null; lastSyncOk = false; render(); setStatus('Token removed'); };
+  $('sSave').onclick = () => {
+    LS.set('kb_repo', $('sRepo').value.trim()); LS.set('kb_branch', $('sBranch').value.trim() || 'master'); LS.set('kb_path', $('sPath').value.trim() || 'tasks.json'); LS.set('kb_me', $('sMe').value.trim().replace(/^@/, ''));
+    if ($('sToken').value.trim()) LS.set('kb_token', $('sToken').value.trim()); $('dlgSettings').close(); load();
+  };
+  $('btnRefresh').onclick = () => load();
+  ['fClient', 'fWho', 'fLabel', 'fPrio', 'fAttn', 'fHideDone'].forEach(i => $(i).addEventListener('change', render));
+  setInterval(() => { if (!busy && !document.hidden && !document.querySelector('dialog[open]') && lastSyncOk) load(true); }, 30000);
+  setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) render(); }, 60000); // refresh "ago" and stale flags
+
+  render();
+  if (cfg().token) load(); else { setStatus('Not connected. Open Settings.', 'err'); $('btnSettings').click(); }
+})();
+</script>
+</body>
+</html>
