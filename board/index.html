@@ -10,7 +10,7 @@
 <body>
 <header>
   <h1><span class="logo">▦</span> Team Board</h1><span id="stats" class="stats"></span>
-  <div id="viewSw" class="seg" role="group" aria-label="View"><button data-view="board" title="Board"><span class="vi">▦</span><span class="vt"> Board</span></button><button data-view="list" title="List"><span class="vi">☰</span><span class="vt"> List</span></button><button data-view="cal" title="Calendar"><span class="vi">📅</span><span class="vt"> Calendar</span></button></div>
+  <div id="viewSw" class="seg" role="group" aria-label="View"><button data-view="board" title="Board"><span class="vi">▦</span><span class="vt"> Board</span></button><button data-view="list" title="List"><span class="vi">☰</span><span class="vt"> List</span></button><button data-view="cal" title="Calendar"><span class="vi">📅</span><span class="vt"> Calendar</span></button><button data-view="sched" title="Schedule"><span class="vi">🗓</span><span class="vt"> Schedule</span></button></div>
   <button id="btnFilters" class="mobile-only" aria-expanded="false" aria-controls="filters" aria-label="Filters"><span class="ic">⏷</span><span class="tx"> Filters</span></button>
   <div id="filters" class="filters">
   <label>Client <select id="fClient"></select></label>
@@ -23,9 +23,11 @@
   <span class="spacer desktop-only"></span>
   <span id="status">Not connected</span>
   <button id="btnAgent" title="Copy instructions for an AI agent: the board, how to claim and update tasks, and the skill link" aria-label="Copy for agent"><span class="ic">🤖</span><span class="tx"> Copy for agent</span></button>
+  <button id="btnUnread" aria-label="Unread" title="Nothing new"><span class="ic">🔔</span><span id="unreadBadge" class="badge" hidden>0</span></button>
   <button id="btnRefresh" title="Reload from GitHub" aria-label="Refresh"><span class="ic">🔄</span><span class="tx"> Refresh</span></button>
   <button id="btnSettings" aria-label="Settings"><span class="ic">⚙️</span><span class="tx"> Settings</span></button>
 </header>
+<div id="legend" class="legend" aria-label="Colour key"></div>
 <nav id="tabs" aria-label="Columns"></nav>
 <div id="board"></div>
 <div id="toast" role="status" aria-live="polite"></div>
@@ -44,46 +46,58 @@
     <div><label>Branch</label><input id="sBranch" placeholder="master"></div>
     <div><label>File path</label><input id="sPath" placeholder="board/tasks.json"></div>
   </div>
+  <div><label>Card style</label><select id="sStyle"><option value="classic">Classic</option><option value="colorful">Colourful (client and urgency colours)</option></select></div>
   <div><label>Theme</label><select id="sTheme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="sand">Sand</option></select></div>
   <label>Your GitHub username (recorded as the editor, and default assignee)</label><input id="sMe" placeholder="osouthgate">
   <label>Fine-grained personal access token</label><input id="sToken" type="password" autocomplete="off" placeholder="github_pat_...">
   <div class="hint"><a id="patLink" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Create a fine-grained token on GitHub &rarr;</a> (the link pre-fills the name, expiry and <b>Contents: Read and write</b>). On that page choose <b>Only select repositories</b> and pick just the repo that holds your board file. The token is kept only in this browser (localStorage) and is sent only to api.github.com.</div>
+  <div class="hint">Unread markers are remembered in this browser only. <button id="sMarkAll" type="button" style="padding:2px 8px;font-size:12px">Mark all as read</button></div>
   <div class="actions"><button id="sForget" class="danger">Forget token</button><button id="sCancel">Cancel</button><button id="sSave" class="primary">Save &amp; connect</button></div>
 </dialog>
 
 <dialog id="dlgCard" class="drawer" aria-label="Task details">
-  <div class="dhead"><span id="dCreated" class="dcreated"></span><span class="spacer"></span><button id="cClose" class="ico" aria-label="Close">✕</button></div>
+  <div class="dhead"><span id="dCreated" class="dcreated"></span><span class="spacer"></span><span id="dSaved" class="dsaved" role="status"></span><button id="cClose" class="ico" aria-label="Close">✕</button></div>
   <div class="dbody" id="cBody">
     <div class="dchips">
       <select id="cCol" class="pillsel" aria-label="Status"></select>
-      <select id="cPrio" class="pillsel" aria-label="Priority"><option>high</option><option>medium</option><option>low</option></select>
+      <select id="cPrio" class="pillsel prio" aria-label="Priority"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
     </div>
-    <input id="cTitle" class="dtitle" placeholder="Task title" aria-label="Title">
-    <textarea id="cDetails" class="ddesc" placeholder="Add a description. URLs become clickable." aria-label="Description"></textarea>
-    <div class="preview" id="cPreview" hidden></div>
+    <div id="cClaimWrap" class="claimbanner" hidden>
+      <div id="cClaim"></div>
+      <div class="cbtns"><button id="cStuck" type="button">Mark stuck</button><button id="cRelease" type="button" class="danger">Release claim</button></div>
+    </div>
+    <textarea id="cTitle" class="dtitle" rows="1" aria-label="Title" placeholder="Task title"></textarea>
+
     <div class="props">
-      <div class="prop"><span class="pk">👥 People</span><div class="pv checks" id="cWho"></div></div>
-      <div class="prop"><span class="pk">📅 Due by</span><div class="pv"><input id="cDue" type="date"></div></div>
-      <div class="prop"><span class="pk">🏷 Labels</span><div class="pv"><input id="cLabels" list="labelList" placeholder="comma separated"><datalist id="labelList"></datalist></div></div>
-      <div class="prop"><span class="pk">🏢 Client</span><div class="pv"><select id="cClient"></select></div></div>
-      <div class="prop"><span class="pk">🔗 Links</span><div class="pv"><textarea id="cLinks" style="min-height:60px" placeholder="Title | https://url (one per line)"></textarea><div class="hint">GitHub issues, PRs and repos from any repo show as chips on the card.</div></div></div>
-      <div class="prop"><span class="pk">👤 Contacts</span><div class="pv"><textarea id="cContacts" style="min-height:60px" placeholder="Name | role | email | phone (one per line)"></textarea></div></div>
+      <div class="prop"><span class="pk">👥 People</span><div class="pv" id="cWho"></div></div>
+      <div class="prop"><span class="pk">📅 Due</span><div class="pv"><input id="cDue" type="date" class="pillinput"><button id="cDueClear" class="lx" type="button" aria-label="Clear due date" title="Clear" hidden>×</button></div></div>
+      <div class="prop"><span class="pk">🏷 Labels</span><div class="pv"><span id="cLabelChips"></span><input id="cLabelNew" list="labelList" class="addinline" placeholder="＋ Add label"><datalist id="labelList"></datalist></div></div>
+      <div class="prop"><span class="pk">🏢 Client</span><div class="pv"><select id="cClient" class="pillsel" aria-label="Client"></select></div></div>
     </div>
-    <div id="cClaimWrap" hidden>
-      <div class="claimbox"><dl id="cClaim" style="margin:0"></dl>
-        <div class="actions" style="margin-top:8px;justify-content:flex-start"><button id="cStuck">Mark stuck</button><button id="cRelease" class="danger">Release claim</button></div>
+
+    <section class="dsec">
+      <div class="dsech"><h4>📝 Description</h4><button id="cDescBtn" type="button" class="small">Edit</button></div>
+      <div id="cDescView" class="descview" tabindex="0" title="Double-click to edit"></div>
+      <div id="descEdit" hidden>
+        <textarea id="cDetails" class="ddesc" placeholder="Add a more detailed description. URLs become clickable." aria-label="Description"></textarea>
+        <div class="cbtns"><button id="cDescSave" type="button" class="primary">Save</button><button id="cDescCancel" type="button">Cancel</button><span class="hint">Ctrl/Cmd+Enter saves</span></div>
       </div>
-    </div>
-    <section class="dsec"><h4>☑ To-dos <span id="cTodoCount" class="muted"></span></h4><div id="cTodos"></div></section>
-    <section class="dsec" id="cmSec"><h4>💬 Comments <span id="cmCount" class="muted"></span></h4>
-      <div id="cmStream" class="cmstream" aria-live="polite"></div>
-      <div class="hint" id="cmHint" hidden>Set your GitHub username in Settings so comments show your name.</div>
-      <textarea id="cmText" placeholder="Write a comment (Ctrl/Cmd+Enter to post)" rows="2"></textarea>
-      <div class="actions" style="margin-top:6px"><button id="cmPost" class="primary">Comment</button></div>
     </section>
-    <details id="cHistWrap" class="dsec"><summary id="cHistSum">History</summary><ol id="cHist" class="hist"></ol></details>
+
+    <section class="dsec"><div class="dsech"><h4>☑ Checklist <span id="cTodoCount" class="muted"></span></h4></div><div id="cTodos"></div></section>
+    <section class="dsec"><div class="dsech"><h4>🔗 Links <span id="cLinkCount" class="muted"></span></h4></div><div id="cLinkList"></div><input id="cLinkNew" class="addinline wide" placeholder="＋ Add a link (paste a URL, or Title | URL)"></section>
+    <section class="dsec"><div class="dsech"><h4>👤 Contacts</h4></div><div id="cContactList"></div><input id="cContactNew" class="addinline wide" placeholder="＋ Add a contact: Name | role | email | phone"></section>
+
+    <section class="dsec" id="cmSec"><div class="dsech"><h4>💬 Comments <span id="cmCount" class="muted"></span></h4></div>
+      <div class="composer"><textarea id="cmText" rows="1" placeholder="Write a comment…" aria-label="Write a comment"></textarea>
+        <div class="cbtns" id="cmActions" hidden><button id="cmPost" type="button" class="primary">Comment</button><span class="hint">Ctrl/Cmd+Enter posts</span></div></div>
+      <div class="hint" id="cmHint" hidden>Set your GitHub username in Settings so comments show your name.</div>
+      <div id="cmStream" class="cmlist" aria-live="polite"></div>
+    </section>
+
+    <details id="cHistWrap" class="dsec"><summary id="cHistSum">Activity</summary><ol id="cHist" class="hist"></ol></details>
+    <div class="dfoot2"><button id="cDelete" type="button" class="danger">Delete task</button></div>
   </div>
-  <div class="dfoot"><button id="cDelete" class="danger">Delete</button><span class="spacer"></span><button id="cCancel">Close</button><button id="cSave" class="primary">Save changes</button></div>
 </dialog>
 
 <script src="board.js"></script>

@@ -77,7 +77,7 @@
       if (res.status === 404) { await diagnose404(); return false; }
       if (res.status === 401 || res.status === 403) { setStatus('Token rejected or lacks access', 'err'); return false; }
       if (!res.ok) { setStatus(`GitHub error ${res.status}`, 'err'); return false; }
-      const data = await res.json(); sha = data.sha; etag = res.headers.get('ETag'); state = normalise(JSON.parse(b64d(data.content))); lastSyncOk = true;
+      const data = await res.json(); sha = data.sha; etag = res.headers.get('ETag'); state = normalise(JSON.parse(b64d(data.content))); lastSyncOk = true; initSeen();
       setStatus('Synced ' + new Date().toLocaleTimeString(), 'ok'); render(); return true;
     } catch (e) { console.error(e); setStatus('Network or parse error', 'err'); return false; }
   }
@@ -169,6 +169,13 @@
       if (JSON.stringify(p.assignees) !== JSON.stringify(t.assignees)) add('assignees: ' + (t.assignees.map(a => '@' + a).join(', ') || 'none'));
       if ((p.due || '') !== (t.due || '')) add('due: ' + (t.due || 'cleared'));
       if (p.priority !== t.priority) add('priority: ' + t.priority);
+      if ((p.client || '') !== (t.client || '')) add('client: ' + (t.client || 'none'));
+      if ((p.details || '') !== (t.details || '')) add('edited the description');
+      JSON.stringify(p.labels) !== JSON.stringify(t.labels) && add('labels: ' + (t.labels.join(', ') || 'none'));
+      t.links.filter(l => !p.links.some(x => x.url === l.url)).forEach(l => add('added link: ' + (l.title || l.url)));
+      p.links.filter(l => !t.links.some(x => x.url === l.url)).forEach(l => add('removed link: ' + (l.title || l.url)));
+      t.contacts.filter(k => !p.contacts.some(x => x.name === k.name && x.email === k.email)).forEach(k => add('added contact: ' + k.name));
+      p.contacts.filter(k => !t.contacts.some(x => x.name === k.name && x.email === k.email)).forEach(k => add('removed contact: ' + k.name));
       const pm = new Map(p.todos.map(d => [d.id, d])), tm = new Map(t.todos.map(d => [d.id, d]));
       t.todos.forEach(d => { const o = pm.get(d.id); if (!o) add('added to-do: ' + d.text); else if (!o.done && d.done) add('✓ ' + d.text); else if (o.done && !d.done) add('reopened: ' + d.text); });
       p.todos.forEach(d => { if (!tm.has(d.id)) add('removed to-do: ' + d.text); });
@@ -231,7 +238,54 @@
     items.forEach(([v, l]) => { const o = el('option', null, l); o.value = v; sel.append(o); });
     if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
   }
+  // ---- colour: a card's left edge is its client, its right edge is its urgency -------------------------------
+  // Any text can become a colour: hash it (FNV-1a), take the hash modulo 360 as a hue. Known clients are spaced by the golden angle
+  // (137.5 degrees) past the first six; the first six clients get hand-picked hues that avoid the urgency colours. Unknown text falls back to the hash.
+  function hashHue(str) { let x = 2166136261; for (const ch of String(str)) { x ^= ch.charCodeAt(0); x = Math.imul(x, 16777619); } return (x >>> 0) % 360; }
+  const CLIENT_HUES = [270, 190, 315, 80, 48, 295];   // violet, cyan, magenta, lime, gold, purple: kept clear of the urgency colours (red, orange, blue, green)
+  function clientHue(name) { if (!name) return null; const i = state.clients.indexOf(name); return i >= 0 ? (i < CLIENT_HUES.length ? CLIENT_HUES[i] : Math.round((i * 137.508 + 215) % 360)) : hashHue(name); }
+  const URG = [{ lvl: 0, color: '#30a46c', label: 'Low' }, { lvl: 1, color: '#3e63dd', label: 'Normal' }, { lvl: 2, color: '#f76b15', label: 'High' }, { lvl: 3, color: '#e5484d', label: 'Critical' }];
+  function urgency(t) {   // priority sets the base; an approaching or missed due date raises it
+    if (t.column === doneColId()) return { lvl: -1, color: '#8a94a6', label: 'Done' };
+    let lvl = { high: 2, medium: 1, low: 0 }[t.priority]; if (lvl == null) lvl = 1;
+    if (t.due) { const d = Math.round((Date.parse(t.due + 'T00:00:00') - Date.parse(todayIso() + 'T00:00:00')) / 864e5); if (d < 0 || d <= 1) lvl = 3; else if (d <= 3) lvl = Math.max(lvl, 2); else if (d <= 7) lvl = Math.max(lvl, 1); }
+    return URG[lvl];
+  }
+  function paint(node, t) {   // sets --cc (client colour) and --uc (urgency colour); CSS only uses them in the Colourful style
+    const hue = clientHue(t.client); node.style.setProperty('--cc', hue == null ? 'var(--muted)' : `hsl(${hue} 72% 52%)`); node.style.setProperty('--uc', urgency(t).color); return node;
+  }
+  function renderLegend() {
+    const box = $('legend'); box.textContent = ''; if (document.documentElement.dataset.style !== 'colorful') return;
+    const used = [...new Set(state.tasks.map(t => t.client).filter(Boolean))]; const sel = $('fClient').value;
+    box.append(el('span', 'lgl', 'Left edge: client'));
+    used.forEach(cn => { const b = el('button', 'lgchip' + (sel === cn ? ' on' : ''), cn); b.style.setProperty('--cc', `hsl(${clientHue(cn)} 72% 52%)`); b.title = sel === cn ? 'Show all clients' : 'Show only ' + cn;
+      b.onclick = () => { $('fClient').value = sel === cn ? '' : cn; render(); }; box.append(b); });
+    box.append(el('span', 'lgsep'), el('span', 'lgl', 'Right edge: urgency'));
+    URG.slice().reverse().forEach(u => { const s = el('span', 'lgchip static', u.label); s.style.setProperty('--cc', u.color); box.append(s); });
+  }
+
+  // ---- unread markers: per browser, remembered in localStorage (no repo writes) --------------------------------
+  // seen[taskId] = { c: newest comment time seen, h: newest history time seen }. A comment is unread if someone else posted it after c;
+  // a card has "changed" if someone else (or an agent) logged a history entry after h. First run on a browser marks everything read.
+  let seenMap = null, freshOnly = false;
+  const seenKey = () => 'kb_seen:' + cfg().repo + ':' + cfg().path;
+  const loadSeen = () => { if (seenMap) return seenMap; try { const r = LS.get(seenKey(), ''); seenMap = r ? JSON.parse(r) : null; } catch { seenMap = null; } return seenMap; };
+  const saveSeen = () => LS.set(seenKey(), JSON.stringify(seenMap));
+  const maxAt = arr => arr.reduce((m, x) => (x.at > m ? x.at : m), '');
+  const stampsOf = t => ({ c: maxAt(t.comments), h: maxAt(t.history) });
+  function initSeen() { if (loadSeen()) return; seenMap = {}; state.tasks.forEach(t => { seenMap[t.id] = stampsOf(t); }); saveSeen(); }   // only after a successful load
+  function markSeen(id) { const t = state.tasks.find(x => x.id === id), m = loadSeen(); if (!t || !m) return; const s = stampsOf(t), o = m[id]; if (o && o.c === s.c && o.h === s.h) return; m[id] = s; saveSeen(); }
+  function markAllSeen() { const m = loadSeen() || (seenMap = {}); state.tasks.forEach(t => { m[t.id] = stampsOf(t); }); saveSeen(); }
+  function freshInfo(t) {
+    const me = (cfg().me || '').toLowerCase(), m = loadSeen(); if (!me || !m) return { unread: 0, changed: false };
+    const s = m[t.id] || { c: '', h: '' }, other = x => String(x.by || '').toLowerCase() !== me;
+    return { unread: t.comments.filter(x => x.at > s.c && other(x)).length, changed: t.history.some(x => x.at > s.h && other(x)) };
+  }
+  const isFresh = t => { const f = freshInfo(t); return f.unread > 0 || f.changed; };
+  const newBadge = n => el('span', 'newb', `${n} new`);
+
   function filtered(t) {
+    if (freshOnly && !isFresh(t)) return false;
     const fc = $('fClient').value, fw = $('fWho').value, fl = $('fLabel').value, fp = $('fPrio').value;
     if (fc && t.client !== fc) return false;
     if (fw === '__none' && t.assignees.length) return false;
@@ -248,10 +302,11 @@
     fillSelect($('fClient'), state.clients.map(c => [c, c]), 'All');
     fillSelect($('fWho'), [...state.people.map(p => [p.github, '@' + p.github]), ['__none', 'Unassigned'], ['__agent', 'Claimed by an agent']], 'Everyone');
     fillSelect($('fLabel'), state.labels.map(l => [l.name, l.name]), 'All');
+    if ($('dlgCard').open && editing) markSeen(editing);
     document.body.dataset.view = view; syncViewSw();
     if (view !== 'board') {
-      const board = $('board'), st = board.scrollTop; board.className = view; board.textContent = '';
-      (view === 'list' ? renderList : renderCal)(); board.scrollTop = st; renderStats();
+      const board = $('board'), st = board.scrollTop; board.className = 'v-' + view; board.textContent = '';
+      ({ list: renderList, cal: renderCal, sched: renderSched })[view](); board.scrollTop = st; renderLegend(); renderStats();
       if ($('dlgCard').open) refreshDrawer(); return;
     }
     const board = $('board'); board.className = ''; board.textContent = ''; const hideDone = $('fHideDone').checked;
@@ -269,7 +324,7 @@
       btn.onclick = go; inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
       add.append(inp, btn); c.append(add); board.append(c);
     });
-    renderStats(); renderTabs(); if ($('dlgCard').open) refreshDrawer();
+    renderLegend(); renderStats(); renderTabs(); if ($('dlgCard').open) refreshDrawer();
   }
 
   // ---- mobile: one column at a time, chosen from a tab strip (or by swiping) ---------------
@@ -354,6 +409,11 @@
     const box = $('stats'); box.textContent = '';
     const chip = (txt, cls) => box.append(el('span', 'stat' + (cls ? ' ' + cls : ''), txt));
     chip(`${open.length} open`); if (agents) chip(`${agents} with an agent`, 'agent'); if (attn) chip(`${attn} need attention`, 'warn');
+    const fresh = state.tasks.filter(isFresh).length, bell = $('btnUnread'), bd = $('unreadBadge');
+    bd.textContent = fresh > 99 ? '99+' : String(fresh); bd.hidden = !fresh; bell.classList.toggle('on', freshOnly);
+    bell.title = fresh ? `${fresh} card${fresh > 1 ? 's' : ''} with new comments or changes${freshOnly ? ' (showing only these; click to show all)' : ' (click to show only these)'}` : (cfg().me ? 'Nothing new' : 'Set your GitHub username in Settings to see unread markers');
+    document.title = (fresh ? `(${fresh}) ` : '') + 'Team Board';
+    if (chip && fresh) chip(`${fresh} new`, 'agent');
   }
 
   // Recognise GitHub URLs (any repo) so they read as "owner/repo#12" chips on the card
@@ -401,10 +461,6 @@
     $('cTodoCount').textContent = t.todos.length ? `(${t.todos.filter(d => d.done).length}/${t.todos.length})` : '';
     if (typed) box.querySelector('.todonew').value = typed;
   }
-  function refreshDrawer() {   // board data changed underneath an open card: refresh the live parts only, never the form fields
-    const t = state.tasks.find(x => x.id === editing); if (!t) { $('dlgCard').close(); return; }
-    renderDlgTodos(); renderComments(); renderDlgHistory(t);
-  }
   const ago2 = iso => { const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return m < 1 ? 'just now' : m < 60 ? m + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago'; };
   function renderDlgHistory(t) {
     const ol = $('cHist'); ol.textContent = ''; $('cHistSum').textContent = `History (${t.history.length})`;
@@ -416,34 +472,32 @@
   let commentsFor = null, cmSig = '', todoSig = '';
   function renderComments() {
     const t = state.tasks.find(x => x.id === commentsFor); if (!t) { $('dlgCard').close(); return; }
-    const sig = JSON.stringify(t.comments.map(m => m.id)) + t.comments.length; if (sig === cmSig && $('cmStream').childNodes.length) return; cmSig = sig;
-    $('cmCount').textContent = t.comments.length ? `(${t.comments.length})` : ''; const box = $('cmStream'), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40 || !box.childNodes.length;
-    box.textContent = '';
-    t.comments.forEach(cm => {
-      const row = el('div', 'cm' + (cm.by && cfg().me && cm.by.toLowerCase() === cfg().me.toLowerCase() ? ' mine' : '')), head = el('div', 'cmhead');
+    const sig = JSON.stringify(t.comments.map(m => m.id)) + t.comments.length; if (sig === cmSig) return; cmSig = sig;
+    $('cmCount').textContent = t.comments.length ? `(${t.comments.length})` : ''; const box = $('cmStream'); box.textContent = '';
+    t.comments.slice().reverse().forEach(cm => {      // newest first, like Trello: the composer is always at the top
+      const row = el('div', 'cmcard'), head = el('div', 'cmhead');
       head.append(avatar(String(cm.by || '?').replace(/@.*/, '')), el('b', null, cm.by || '?'), el('time', null, ago2(cm.at)));
       head.lastChild.title = cm.at; const body = el('div', 'cmbody'); linkify(body, cm.text); row.append(head, body); box.append(row);
     });
-    if (!t.comments.length) box.append(el('div', 'cmempty', 'No comments yet. Start the conversation below.'));
-    if (atBottom) box.scrollTop = box.scrollHeight;
   }
   const openComments = id => openCard(id, 'comments');
   async function postComment() {
     const ta = $('cmText'), text = ta.value.trim(), id = commentsFor; if (!text || !id) return;
     if (busy) { toast('Busy, try again in a moment', true); return; }
-    const n0 = (state.tasks.find(x => x.id === id) || { comments: [] }).comments.length; ta.value = ''; $('cmPost').disabled = true;
+    const n0 = (state.tasks.find(x => x.id === id) || { comments: [] }).comments.length; ta.value = ''; autosize(ta); $('cmPost').disabled = true;
     await mutate(n => { const t = n.tasks.find(x => x.id === id); if (!t) return; t.comments.push({ id: 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), at: nowIso(), by: cfg().me || 'someone', text }); stamp(t); }, `Comment: ${titleOf(id)}`, [id]);
     $('cmPost').disabled = false;
-    if ((state.tasks.find(x => x.id === id) || { comments: [] }).comments.length <= n0) { ta.value = text; toast('Comment not saved. Your text is still in the box.', true); }
-    renderComments(); $('cmStream').scrollTop = $('cmStream').scrollHeight; ta.focus();
+    if ((state.tasks.find(x => x.id === id) || { comments: [] }).comments.length <= n0) { ta.value = text; autosize(ta); toast('Comment not saved. Your text is still in the box.', true); }
+    cmSig = ''; renderComments(); ta.focus();
   }
   $('cmPost').onclick = postComment;
   $('cmText').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); postComment(); } });
-  $('dlgCard').addEventListener('close', () => { commentsFor = null; });
+  $('cmText').addEventListener('focus', () => { $('cmActions').hidden = false; });
+  $('cmText').addEventListener('input', () => autosize($('cmText')));
   setInterval(() => { if ($('dlgCard').open && !busy && !document.hidden && lastSyncOk) load(true); }, 10000);   // near-live while a conversation is open (304s are free)
 
   // ---- views: board (columns), list (grouped rows) and calendar (month by due date) -------------------
-  let view = LS.get('kb_view', 'board'); if (!['board', 'list', 'cal'].includes(view)) view = 'board';
+  let view = LS.get('kb_view', 'board'); if (!['board', 'list', 'cal', 'sched'].includes(view)) view = 'board';
   const setView = v => { view = v; LS.set('kb_view', v); render(); };
   const syncViewSw = () => document.querySelectorAll('#viewSw button').forEach(b => { const on = b.dataset.view === view; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
   const pad2 = n => String(n).padStart(2, '0'), isoDay = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`, todayIso = () => isoDay(new Date());
@@ -462,17 +516,17 @@
   const cap = s => s ? s[0].toUpperCase() + s.slice(1) : '';
   const firstLine = t => (t.details || '').split('\n').find(x => x.trim()) || '';
   function chipTodo(t) { const tc = todoCount(t); if (!tc.all) return null; const b = el('button', 'chip todochip' + (tc.done === tc.all ? ' full' : ''), `☑ ${tc.done}/${tc.all}`); b.title = 'Show or hide the checklist'; b.onclick = () => { openLists.has(t.id) ? openLists.delete(t.id) : openLists.add(t.id); render(); }; return b; }
-  function chipComments(t) { const n = t.comments.length; if (!n) return null; const b = el('button', 'chip cmchip has', `💬 ${n}`); b.title = `${n} comment${n > 1 ? 's' : ''}`; b.onclick = () => openCard(t.id, 'comments'); return b; }
+  function chipComments(t) { const n = t.comments.length; if (!n) return null; const fr = freshInfo(t); const b = el('button', 'chip cmchip has' + (fr.unread ? ' unread' : ''), `💬 ${n}`); if (fr.unread) b.append(newBadge(fr.unread)); b.title = `${n} comment${n > 1 ? 's' : ''}`; b.onclick = () => openCard(t.id, 'comments'); return b; }
   function chipAgent(t) { if (!t.claim) return null; const st = claimState(t.claim); return el('span', 'chip agentchip ' + st, `🤖 ${t.claim.agent} · ${st}`); }
   function chipsGh(t) { const out = []; t.links.forEach(l => { const g = ghLink(l.url); if (!g) return; const a = el('a', 'chip gh ' + g.kind, g.label); a.href = safeUrl(l.url); a.target = '_blank'; a.rel = 'noopener noreferrer'; out.push(a); }); return out; }
   const labelTags = (t, max) => { const out = []; t.labels.slice(0, max || 99).forEach(l => { const s = el('span', 'tag label', l); s.style.background = labelColor(l); out.push(s); }); if (max && t.labels.length > max) out.push(el('span', 'tag', '+' + (t.labels.length - max))); return out; };
 
   function listRow(t) {
-    const isDone = t.column === doneColId(), row = el('div', 'trow' + (isDone ? ' done' : ''));
+    const isDone = t.column === doneColId(), row = paint(el('div', 'trow' + (isDone ? ' done' : '')), t);
     const circ = el('button', 'circ p-' + (t.priority || 'medium'), isDone ? '✓' : ''); circ.title = isDone ? 'Reopen' : 'Mark done'; circ.setAttribute('aria-label', circ.title);
     circ.onclick = e => { e.stopPropagation(); toggleDone(t); };
     const c0 = el('div', 'c-check'); c0.append(circ);
-    const task = el('div', 'c-task'), title = el('div', 'lt', t.title); title.onclick = () => openCard(t.id); task.append(title);
+    const task = el('div', 'c-task'), title = el('div', 'lt', t.title); title.onclick = () => openCard(t.id); if (freshInfo(t).changed) { const d = el('span', 'cdot'); d.title = 'Changed since you last looked'; title.prepend(d); } task.append(title);
     const mm = el('div', 'lmeta m-only');      // phone layout: everything under the title
     if (t.due) mm.append(el('span', 'chip due' + dueState(t), '📅 ' + fmtDue(t.due)));
     if (t.priority) mm.append(el('span', 'pr ' + t.priority, cap(t.priority)));
@@ -511,6 +565,45 @@
     });
   }
 
+  function renderSched() {
+    const board = $('board'), hideDone = $('fHideDone').checked, today = todayIso(), dc = doneColId();
+    const tasks = state.tasks.filter(t => filtered(t) && !(hideDone && t.column === dc)), order = new Map(state.columns.map((c, i) => [c.id, i]));
+    const byDate = (a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : (order.get(a.column) || 0) - (order.get(b.column) || 0));
+    const dated = tasks.filter(t => t.due).sort(byDate), undated = tasks.filter(t => !t.due);
+    const overdue = dated.filter(t => t.due < today && t.column !== dc), earlier = dated.filter(t => t.due < today && t.column === dc), upcoming = dated.filter(t => t.due >= today);
+    const wrap = el('div', 'sched'), bar = el('div', 'calbar');
+    const todayBtn = el('button', 'calnav', 'Today'); todayBtn.onclick = () => { const x = wrap.querySelector('.sday.today'); if (x) x.scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+    bar.append(todayBtn, el('h2', 'caltitle', 'Schedule'), el('span', 'spacer')); wrap.append(bar);
+
+    const item = t => {
+      const done = t.column === dc, row = paint(el('div', 'sitem' + (done ? ' done' : '') + dueState(t)), t);
+      const circ = el('button', 'circ sm p-' + (t.priority || 'medium'), done ? '✓' : ''); circ.title = done ? 'Reopen' : 'Mark done'; circ.setAttribute('aria-label', circ.title); circ.onclick = e => { e.stopPropagation(); toggleDone(t); };
+      const title = el('div', 'stitle'); if (freshInfo(t).changed) { const d = el('span', 'cdot'); d.title = 'Changed since you last looked'; title.append(d); } title.append(document.createTextNode(t.title));
+      const sub = [t.client, ...t.labels].filter(Boolean).join(' · '); if (sub) title.append(el('span', 'ssub', sub));
+      const avs = el('div', 'lavs'); t.assignees.forEach(a => avs.append(avatar(a)));
+      const extra = el('div', 'sx'); [chipTodo(t), chipComments(t), chipAgent(t)].forEach(x => x && extra.append(x));
+      row.append(circ, el('div', 'stime', colName(t.column)), title, extra, avs); row.onclick = () => openCard(t.id); return row;
+    };
+    const day = (key, label, list, cls) => {
+      const d = new Date(key + 'T00:00:00'), sec = el('section', 'sday' + (cls || ''));
+      const dl = el('div', 'sdate');
+      if (label) dl.append(el('span', 'sdn lbl', label)); else dl.append(el('span', 'sdn', String(d.getDate())), el('span', 'sdl', d.toLocaleDateString('en-GB', { month: 'short', weekday: 'short' }).replace(' ', ', ')));
+      const items = el('div', 'sitems'); list.forEach(t => items.append(item(t))); if (!list.length) items.append(el('div', 'snone', 'Nothing due'));
+      sec.append(dl, items); return sec;
+    };
+    if (overdue.length) wrap.append(day('', 'Overdue', overdue, ' overdue'));
+    const groups = new Map(); upcoming.forEach(t => { if (!groups.has(t.due)) groups.set(t.due, []); groups.get(t.due).push(t); }); if (!groups.has(today)) groups.set(today, []);
+    let lastMonth = '';
+    [...groups.keys()].sort().forEach(k => {
+      const mo = k.slice(0, 7); if (mo !== lastMonth) { lastMonth = mo; wrap.append(el('div', 'smonth', new Date(k + 'T00:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }))); }
+      wrap.append(day(k, '', groups.get(k), k === today ? ' today' : ''));
+    });
+    if (earlier.length) { const dt = el('details', 'calundated'); dt.append(el('summary', null, `Earlier, completed (${earlier.length})`)); earlier.slice().reverse().forEach(t => dt.append(item(t))); wrap.append(dt); }
+    const und = el('details', 'calundated'); und.open = LS.get('kb_undated', '') === '1'; und.addEventListener('toggle', () => LS.set('kb_undated', und.open ? '1' : ''));
+    und.append(el('summary', null, `No due date (${undated.length})`)); undated.forEach(t => und.append(item(t))); wrap.append(und);
+    board.append(wrap);
+  }
+
   let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1), calSel = todayIso();
   function renderCal() {
     const board = $('board'), hideDone = $('fHideDone').checked, today = todayIso();
@@ -531,7 +624,7 @@
       cell.append(el('span', 'dn', String(d.getDate())));
       const pills = el('div', 'pills');
       list.slice(0, 3).forEach(t => {
-        const p = el('button', 'pill p-' + (t.priority || 'medium') + (t.column === doneColId() ? ' done' : '') + dueState(t), t.title); p.title = t.title; p.draggable = true;
+        const p = paint(el('button', 'pill p-' + (t.priority || 'medium') + (t.column === doneColId() ? ' done' : '') + dueState(t) + (isFresh(t) ? ' fresh' : ''), t.title), t); p.title = t.title; p.draggable = true;
         p.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', t.id); });
         p.onclick = e => { e.stopPropagation(); openCard(t.id); }; pills.append(p);
       });
@@ -560,13 +653,14 @@
   }
 
   function cardEl(t, ci) {
-    const c = el('div', 'card' + (t.priority ? ' p-' + t.priority : '')); c.draggable = true;
+    const c = el('div', 'card' + (t.priority ? ' p-' + t.priority : '')); c.draggable = true; paint(c, t);
     c.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', t.id); c.classList.add('dragging'); });
     c.addEventListener('dragend', () => c.classList.remove('dragging'));
     c.addEventListener('dragover', e => e.preventDefault());
     c.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); dropOn(e, t.column, t.id); });
     c.addEventListener('dblclick', () => openCard(t.id));
-    const top = el('div', 'top'); if (t.priority) top.append(el('span', 'prio ' + t.priority, t.priority)); top.append(el('span', 'spacer'));
+    const fr = freshInfo(t);
+    const top = el('div', 'top'); if (fr.changed) { const d = el('span', 'cdot'); d.title = 'Changed since you last looked'; top.append(d); } if (t.priority) top.append(el('span', 'prio ' + t.priority, t.priority)); top.append(el('span', 'spacer'));
     const edit = el('button', 'ico', '✏️'), bot = el('button', 'ico', '🤖');
     edit.title = 'Edit task'; edit.setAttribute('aria-label', 'Edit task'); edit.onclick = () => openCard(t.id);
     bot.title = 'Copy instructions for an agent to work on this task'; bot.setAttribute('aria-label', 'Copy agent instructions for this task'); bot.onclick = () => copyText(agentPrompt(t), 'Task instructions copied for an agent');
@@ -582,7 +676,7 @@
     { const tc = todoCount(t), chip = el('button', 'chip todochip' + (tc.all && tc.done === tc.all ? ' full' : ''), tc.all ? `☑ ${tc.done}/${tc.all}` : '☑ +');
       chip.title = tc.all ? 'Show or hide the checklist' : 'Add a checklist'; chip.setAttribute('aria-expanded', String(openLists.has(t.id)));
       chip.onclick = () => { openLists.has(t.id) ? openLists.delete(t.id) : openLists.add(t.id); render(); }; foot.append(chip); }
-    { const n = t.comments.length, cm = el('button', 'chip cmchip' + (n ? ' has' : ''), n ? `💬 ${n}` : '💬'); cm.title = n ? `${n} comment${n > 1 ? 's' : ''}` : 'Add a comment'; cm.setAttribute('aria-label', cm.title); cm.onclick = () => openComments(t.id); foot.append(cm); }
+    { const n = t.comments.length, cm = el('button', 'chip cmchip' + (n ? ' has' : ''), n ? `💬 ${n}` : '💬'); cm.title = n ? `${n} comment${n > 1 ? 's' : ''}${fr.unread ? ', ' + fr.unread + ' unread' : ''}` : 'Add a comment'; if (fr.unread) { cm.classList.add('unread'); cm.append(newBadge(fr.unread)); } cm.setAttribute('aria-label', cm.title); cm.onclick = () => openComments(t.id); foot.append(cm); }
     if (t.due) { const late = t.column !== 'done' && t.due < new Date().toISOString().slice(0, 10); foot.append(el('span', 'chip' + (late ? ' late' : ''), '📅 ' + t.due)); }
     const other = [];
     t.links.forEach(l => { const g = ghLink(l.url); if (!g) { other.push(l); return; }
@@ -632,48 +726,129 @@
   const linksText = ls => (ls || []).map(l => l.title && l.title !== l.url ? `${l.title} | ${l.url}` : l.url).join('\n');
   const contactsText = cs => (cs || []).map(c => [c.name, c.role, c.email, c.phone].join(' | ').replace(/( \| )+$/, '')).join('\n');
 
-  function updatePreview() {
-    const p = $('cPreview'), txt = $('cDetails').value; p.textContent = '';
-    p.hidden = !/https?:\/\//.test(txt); if (!p.hidden) linkify(p, txt);
+  let fieldBase = { title: '', details: '' }, editingDesc = false, saveTimer = null;
+  const autosize = ta => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight + 2, 640) + 'px'; };
+  const taskNow = () => state.tasks.find(x => x.id === editing);
+  const baseFor = key => { const b = clone(state), i = b.tasks.findIndex(x => x.id === editing); if (i >= 0) b.tasks[i][key] = fieldBase[key]; return b; };   // the text as it was when I started editing it
+  async function saveField(fn, msg, baseKey) {     // every field saves on its own (no Save button); conflicts are checked per field
+    const id = editing, sv = $('dSaved'); sv.textContent = 'Saving…'; sv.className = 'dsaved';
+    await mutate(fn, msg, [id], baseKey ? baseFor(baseKey) : null);
+    const ok = $('status').classList.contains('ok'); sv.textContent = ok ? 'Saved ✓' : 'Not saved'; sv.className = 'dsaved ' + (ok ? 'ok' : 'bad');
+    clearTimeout(saveTimer); saveTimer = setTimeout(() => { sv.textContent = ''; }, 2500);
   }
-  let openedSnap = null;
-  function openCard(id, focus) {
-    const t = state.tasks.find(x => x.id === id); if (!t) return; editing = id; commentsFor = id; openedSnap = clone(t); cmSig = ''; todoSig = '';
-    $('dCreated').textContent = t.created ? 'Created ' + new Date(t.created).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + (t.createdBy ? ' by ' + t.createdBy : '') : '';
-    fillSelect($('cClient'), [['', '(none)'], ...state.clients.map(c => [c, c])]); $('cClient').value = t.client || '';
-    fillSelect($('cCol'), state.columns.map(c => [c.id, c.name])); $('cCol').value = t.column;
-    const w = $('cWho'); w.textContent = '';
-    state.people.concat((t.assignees || []).filter(a => !state.people.some(p => p.github === a)).map(a => ({ github: a, name: a }))).forEach(p => {
-      const l = el('label'); const cb = el('input'); cb.type = 'checkbox'; cb.value = p.github; cb.checked = t.assignees.includes(p.github); l.append(cb, document.createTextNode('@' + p.github + (p.name && p.name !== p.github ? ` (${p.name})` : ''))); w.append(l);
+  const edit = (id, f, msg, baseKey) => saveField(n => { const t = n.tasks.find(x => x.id === id); if (t) { f(t, n); stamp(t); } }, msg, baseKey);
+
+  function renderDescView(t) {
+    const v = $('cDescView'); v.textContent = ''; if (t.details) linkify(v, t.details); else v.append(el('span', 'ph', 'Add a more detailed description…'));
+  }
+  function startDesc() {
+    const t = taskNow(); if (!t || editingDesc) return; editingDesc = true; fieldBase.details = t.details || '';
+    $('cDetails').value = fieldBase.details; $('cDescView').hidden = true; $('cDescBtn').hidden = true; $('descEdit').hidden = false; autosize($('cDetails')); const ta = $('cDetails'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+  }
+  function closeDesc(save) {
+    if (!editingDesc) return; const t = taskNow(), v = $('cDetails').value, id = editing; editingDesc = false;
+    $('descEdit').hidden = true; $('cDescView').hidden = false; $('cDescBtn').hidden = false;
+    if (save && t && v !== fieldBase.details) { edit(id, x => { x.details = v; }, `Edit description: ${t.title}`, 'details'); fieldBase.details = v; t.details = v; }
+    if (t) renderDescView(t);
+  }
+  $('cDescBtn').onclick = startDesc; $('cDescView').addEventListener('dblclick', startDesc);
+  $('cDescView').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); startDesc(); } });
+  $('cDescSave').onclick = () => closeDesc(true); $('cDescCancel').onclick = () => closeDesc(false);
+  $('cDetails').addEventListener('input', () => autosize($('cDetails')));
+  $('cDetails').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); closeDesc(true); } });
+
+  function commitTitle() {
+    const t = taskNow(); if (!t) return; const ti = $('cTitle'), v = ti.value.trim();
+    if (!v) { ti.value = fieldBase.title; autosize(ti); return; } if (v === fieldBase.title) return;
+    const id = editing; edit(id, x => { x.title = v; }, `Rename: ${v}`, 'title'); fieldBase.title = v;
+  }
+  $('cTitle').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('cTitle').blur(); } });
+  $('cTitle').addEventListener('input', () => autosize($('cTitle'))); $('cTitle').addEventListener('blur', commitTitle);
+
+  $('cCol').onchange = e => { const id = editing, v = e.target.value; saveField(n => { place(n, id, v, null); }, `Move: ${titleOf(id)}`); };
+  $('cPrio').onchange = e => { const v = e.target.value; e.target.dataset.v = v; edit(editing, t => { t.priority = v; }, `Priority: ${titleOf(editing)}`); };
+  $('cClient').onchange = e => { const v = e.target.value; edit(editing, t => { t.client = v; }, `Client: ${titleOf(editing)}`); };
+  $('cDue').onchange = e => { const v = e.target.value; $('cDueClear').hidden = !v; edit(editing, t => { t.due = v; }, `Due: ${titleOf(editing)}`); };
+  $('cDueClear').onclick = () => { $('cDue').value = ''; $('cDueClear').hidden = true; edit(editing, t => { t.due = ''; }, `Clear due: ${titleOf(editing)}`); };
+
+  function renderPeople(t) {
+    const box = $('cWho'); box.textContent = '';
+    state.people.map(p => ({ github: p.github, name: p.name || p.github })).concat(t.assignees.filter(a => !state.people.some(p => p.github === a)).map(a => ({ github: a, name: a }))).forEach(p => {
+      const on = t.assignees.includes(p.github), b = el('button', 'pchip' + (on ? ' on' : '')); b.type = 'button'; b.setAttribute('aria-pressed', String(on)); b.title = (on ? 'Remove @' : 'Assign @') + p.github;
+      b.append(avatar(p.github), document.createTextNode(p.name));
+      b.onclick = () => edit(editing, x => { const i = x.assignees.indexOf(p.github); if (i >= 0) x.assignees.splice(i, 1); else x.assignees.push(p.github); }, `Assignees: ${titleOf(editing)}`); box.append(b);
     });
-    $('cTitle').value = t.title; $('cPrio').value = t.priority || 'medium'; $('cDue').value = t.due || '';
-    $('cLabels').value = t.labels.join(', '); $('labelList').textContent = ''; state.labels.forEach(l => { const o = el('option'); o.value = l.name; $('labelList').append(o); });
-    $('cDetails').value = t.details || ''; $('cLinks').value = linksText(t.links); $('cContacts').value = contactsText(t.contacts);
-    updatePreview(); renderDlgTodos(true); renderComments(); $('cmHint').hidden = !!cfg().me; renderDlgHistory(t); $('cHistWrap').open = false;
-    const wrap = $('cClaimWrap'); wrap.hidden = !t.claim; const dl = $('cClaim'); dl.textContent = '';
-    if (t.claim) { const k = t.claim, st = claimState(k); [['Agent', k.agent], ['On behalf of', k.on_behalf_of && '@' + k.on_behalf_of], ['State', st], ['Session', k.session_id], ['Session URL', k.session_url], ['Host', k.host], ['Working dir', k.cwd], ['Branch', k.branch], ['Claimed', k.claimed_at && `${k.claimed_at} (${ago(k.claimed_at)})`], ['Last heartbeat', k.heartbeat_at && `${k.heartbeat_at} (${ago(k.heartbeat_at)})`], ['Note', k.note]].forEach(([a, b]) => { if (!b) return; dl.append(el('dt', null, a)); const dd = el('dd'); linkify(dd, b); dl.append(dd); }); }
-    $('dlgCard').showModal(); $('cBody').scrollTop = 0;
-    if (focus === 'comments') setTimeout(() => { $('cmSec').scrollIntoView({ block: 'start' }); $('cmStream').scrollTop = $('cmStream').scrollHeight; $('cmText').focus(); }, 60);
   }
-  $('cDetails').addEventListener('input', updatePreview);
-  $('cCancel').onclick = $('cClose').onclick = () => $('dlgCard').close();
-  $('cSave').onclick = () => {
-    const id = editing, v = {
-      title: $('cTitle').value.trim(), client: $('cClient').value, column: $('cCol').value, priority: $('cPrio').value, due: $('cDue').value,
-      assignees: [...$('cWho').querySelectorAll('input:checked')].map(x => x.value), labels: $('cLabels').value.split(',').map(x => x.trim()).filter(Boolean),
-      details: $('cDetails').value, links: parseLinks($('cLinks').value), contacts: parseContacts($('cContacts').value),
-    };
-    if (!v.title) return; $('dlgCard').close();
-    mutate(n => {
-      const t = n.tasks.find(x => x.id === id); if (!t) return;
-      Object.assign(t, { title: v.title, client: v.client, priority: v.priority, due: v.due, assignees: v.assignees, labels: v.labels, details: v.details, links: v.links, contacts: v.contacts }); stamp(t);
-      v.labels.forEach(l => { if (!n.labels.some(x => x.name === l)) n.labels.push({ name: l, color: '#6b778c' }); });
-      if (t.column !== v.column) place(n, id, v.column, null);
-    }, `Edit task: ${v.title}`, [id], (() => { const b = clone(state), i = b.tasks.findIndex(x => x.id === id); if (i >= 0 && openedSnap) b.tasks[i] = clone(openedSnap); return b; })());
-  };
-  $('cDelete').onclick = () => { const id = editing; if (!confirm(`Delete "${titleOf(id)}"?`)) return; const title = titleOf(id); $('dlgCard').close(); mutate(n => { n.tasks = n.tasks.filter(x => x.id !== id); }, `Delete task: ${title}`, [id]); };
-  $('cStuck').onclick = () => { const id = editing; $('dlgCard').close(); mutate(n => { const t = n.tasks.find(x => x.id === id); if (t && t.claim) { t.claim.status = 'stuck'; t.claim.note = (t.claim.note ? t.claim.note + ' | ' : '') + `marked stuck by ${me() || 'human'}`; stamp(t); } }, `Mark stuck: ${titleOf(id)}`, [id]); };
-  $('cRelease').onclick = () => { const id = editing; if (!confirm('Release the agent claim? The agent session may still be running.')) return; $('dlgCard').close(); mutate(n => { const t = n.tasks.find(x => x.id === id); if (t) { t.claim = null; stamp(t); } }, `Release claim: ${titleOf(id)}`, [id]); };
+  function renderLabelChips(t) {
+    const box = $('cLabelChips'); box.textContent = ''; $('labelList').textContent = ''; state.labels.forEach(l => { const o = el('option'); o.value = l.name; $('labelList').append(o); });
+    t.labels.forEach(l => { const s = el('span', 'tag label lchip', l); s.style.background = labelColor(l); const x = el('button', 'lx', '×'); x.type = 'button'; x.title = 'Remove label'; x.setAttribute('aria-label', 'Remove label ' + l);
+      x.onclick = () => edit(editing, tt => { tt.labels = tt.labels.filter(y => y !== l); }, `Labels: ${titleOf(editing)}`); s.append(x); box.append(s); });
+  }
+  function addLabel() {
+    const inp = $('cLabelNew'), v = inp.value.replace(/,/g, '').trim(); inp.value = ''; if (!v) return;
+    edit(editing, (t, n) => { if (!t.labels.includes(v)) t.labels.push(v); if (!n.labels.some(x => x.name === v)) n.labels.push({ name: v, color: '#6b778c' }); }, `Labels: ${titleOf(editing)}`);
+  }
+  $('cLabelNew').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addLabel(); } }); $('cLabelNew').addEventListener('change', addLabel);
+
+  const parseLine = txt => { const p = txt.split('|').map(x => x.trim()); const url = p.length > 1 ? p.slice(1).join('|').trim() : p[0]; return safeUrl(url) ? { title: p.length > 1 && p[0] ? p[0] : url, url } : null; };
+  function renderLinkList(t) {
+    const box = $('cLinkList'); box.textContent = ''; $('cLinkCount').textContent = t.links.length ? `(${t.links.length})` : '';
+    t.links.forEach(l => {
+      const row = el('div', 'linkrow'), g = ghLink(l.url), a = el('a', null, g ? g.label : (l.title || l.url)); a.href = safeUrl(l.url); a.target = '_blank'; a.rel = 'noopener noreferrer';
+      let host = ''; try { host = new URL(l.url).hostname.replace(/^www\./, ''); } catch {}
+      const x = el('button', 'lx', '×'); x.type = 'button'; x.title = 'Remove link'; x.setAttribute('aria-label', 'Remove link');
+      x.onclick = () => edit(editing, tt => { tt.links = tt.links.filter(y => y.url !== l.url); }, `Links: ${titleOf(editing)}`);
+      row.append(el('span', 'li', g ? '🐙' : '🔗'), a, el('span', 'host', g && l.title && l.title !== l.url ? l.title : host), x); box.append(row);
+    });
+  }
+  $('cLinkNew').addEventListener('keydown', e => { if (e.key !== 'Enter') return; e.preventDefault(); const v = parseLine($('cLinkNew').value); if (!v) { toast('Paste an http(s) link, or use: Title | https://url', true); return; }
+    $('cLinkNew').value = ''; edit(editing, t => { if (!t.links.some(y => y.url === v.url)) t.links.push(v); }, `Links: ${titleOf(editing)}`); });
+  function renderContactList(t) {
+    const box = $('cContactList'); box.textContent = '';
+    t.contacts.forEach(k => {
+      const row = el('div', 'contact'), main = el('div', 'cmain'); main.append(el('b', null, k.name || '(no name)')); if (k.role) main.append(el('span', 'host', ' · ' + k.role));
+      const det = el('div', 'cdet'); if (k.email) { const a = el('a', null, k.email); a.href = 'mailto:' + k.email; det.append(a); } if (k.phone) { const a = el('a', null, k.phone); a.href = 'tel:' + k.phone.replace(/\s+/g, ''); det.append(a); }
+      main.append(det); const x = el('button', 'lx', '×'); x.type = 'button'; x.title = 'Remove contact'; x.setAttribute('aria-label', 'Remove contact');
+      x.onclick = () => edit(editing, tt => { const i = tt.contacts.findIndex(y => y.name === k.name && y.email === k.email && y.phone === k.phone); if (i >= 0) tt.contacts.splice(i, 1); }, `Contacts: ${titleOf(editing)}`);
+      row.append(el('span', 'avc', (k.name || '?').slice(0, 1).toUpperCase()), main, x); box.append(row);
+    });
+  }
+  $('cContactNew').addEventListener('keydown', e => { if (e.key !== 'Enter') return; e.preventDefault(); const p = $('cContactNew').value.split('|').map(x => x.trim()); if (!p[0]) return;
+    const k = { name: p[0], role: p[1] || '', email: p[2] || '', phone: p[3] || '' }; $('cContactNew').value = ''; edit(editing, t => { t.contacts.push(k); }, `Contacts: ${titleOf(editing)}`); });
+
+  function renderClaim(t) {
+    const wrap = $('cClaimWrap'); wrap.hidden = !t.claim; const dl = $('cClaim'); dl.textContent = ''; if (!t.claim) return;
+    const k = t.claim, st = claimState(k); wrap.className = 'claimbanner ' + st;
+    const top = el('div', 'cltop'); top.append(el('span', 'pulse'), el('b', null, k.agent), document.createTextNode(`${k.on_behalf_of ? ' for @' + k.on_behalf_of : ''} · ${st} · beat ${ago(k.heartbeat_at || k.claimed_at)}`)); dl.append(top);
+    if (k.note) dl.append(el('div', 'cnote', k.note));
+    dl.append(el('div', 'host', [k.session_id && 'session ' + k.session_id, k.host, k.branch].filter(Boolean).join(' · ')));
+  }
+  $('cStuck').onclick = () => edit(editing, t => { if (t.claim) { t.claim.status = 'stuck'; t.claim.note = (t.claim.note ? t.claim.note + ' | ' : '') + `marked stuck by ${me() || 'human'}`; } }, `Mark stuck: ${titleOf(editing)}`);
+  $('cRelease').onclick = () => { if (!confirm('Release the agent claim? The agent session may still be running.')) return; edit(editing, t => { t.claim = null; }, `Release claim: ${titleOf(editing)}`); };
+
+  function fillDrawer(t, force) {
+    const set = (x, v) => { if ((force || document.activeElement !== x) && x.value !== v) x.value = v; };
+    if (force) { fillSelect($('cClient'), [['', '(none)'], ...state.clients.map(c => [c, c])]); fillSelect($('cCol'), state.columns.map(c => [c.id, c.name])); }
+    set($('cCol'), t.column); set($('cPrio'), t.priority || 'medium'); set($('cClient'), t.client || ''); set($('cDue'), t.due || '');
+    $('cPrio').dataset.v = $('cPrio').value; $('cDueClear').hidden = !$('cDue').value;
+    const ti = $('cTitle'); if (force || (document.activeElement !== ti && ti.value !== t.title)) { ti.value = t.title; fieldBase.title = t.title; } autosize(ti);
+    if (!editingDesc) { fieldBase.details = t.details || ''; renderDescView(t); }
+    renderPeople(t); renderLabelChips(t); renderLinkList(t); renderContactList(t); renderClaim(t); renderDlgTodos(force); renderComments(); renderDlgHistory(t);
+  }
+  function refreshDrawer() { const t = taskNow(); if (!t) { $('dlgCard').close(); return; } fillDrawer(t, false); }   // board data changed underneath an open card
+
+  function openCard(id, focus) {
+    const t = state.tasks.find(x => x.id === id); if (!t) return; editing = id; commentsFor = id; cmSig = ''; todoSig = ''; editingDesc = false;
+    $('descEdit').hidden = true; $('cDescView').hidden = false; $('cDescBtn').hidden = false; $('dSaved').textContent = '';
+    $('dCreated').textContent = t.created ? 'Created ' + new Date(t.created).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + (t.createdBy ? ' by ' + t.createdBy : '') : '';
+    fillDrawer(t, true); $('cmText').value = ''; autosize($('cmText')); $('cmActions').hidden = true; $('cmHint').hidden = !!cfg().me; $('cHistWrap').open = false;
+    markSeen(id); render();
+    $('dlgCard').showModal(); $('cBody').scrollTop = 0; autosize($('cTitle'));
+    if (focus === 'comments') setTimeout(() => { $('cmSec').scrollIntoView({ block: 'start' }); $('cmText').focus(); }, 60);
+  }
+  $('cClose').onclick = () => $('dlgCard').close();
+  $('dlgCard').addEventListener('close', () => { commitTitle(); closeDesc(true); commentsFor = null; });   // closing never loses typed text
+  $('cDelete').onclick = () => { const id = editing; if (!confirm(`Delete "${titleOf(id)}"?`)) return; const title = titleOf(id); editingDesc = false; $('dlgCard').close(); mutate(n => { n.tasks = n.tasks.filter(x => x.id !== id); }, `Delete task: ${title}`, [id]); };
 
   // ---- settings ---------------------------------------------------------------
   $('btnSettings').onclick = () => { const c = cfg(); $('sRepo').value = c.repo; $('sBranch').value = c.branch; $('sPath').value = c.path; $('sMe').value = c.me; $('sToken').value = ''; $('sToken').placeholder = c.token ? '(token saved — leave blank to keep)' : 'github_pat_...'; $('dlgSettings').showModal(); };
@@ -690,6 +865,8 @@
     if ($('sToken').value.trim()) LS.set('kb_token', $('sToken').value.trim()); $('dlgSettings').close(); load();
   };
   document.querySelectorAll('#viewSw button').forEach(b => { b.onclick = () => setView(b.dataset.view); });
+  $('btnUnread').onclick = () => { freshOnly = !freshOnly; render(); };
+  $('sMarkAll').onclick = () => { markAllSeen(); render(); toast('All cards marked as read'); };
   $('btnRefresh').onclick = () => load();
   $('btnAgent').onclick = () => copyText(agentPrompt(null), 'Board instructions copied for an agent');
   $('btnFilters').onclick = () => { const o = document.body.classList.toggle('filters-open'); $('btnFilters').setAttribute('aria-expanded', String(o)); };
@@ -699,6 +876,7 @@
   document.addEventListener('visibilitychange', () => { if (canPoll()) load(true); });  // catch up as soon as the tab is shown again
   setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) render(); }, 60000); // refresh "ago" and stale flags
 
+  $('sStyle').value = window.kbStyle ? window.kbStyle.get() : 'classic'; $('sStyle').onchange = e => { window.kbStyle && window.kbStyle.set(e.target.value); render(); };
   $('sTheme').value = window.kbTheme ? window.kbTheme.get() : 'auto';
   $('sTheme').onchange = e => window.kbTheme && window.kbTheme.set(e.target.value);
   render();
