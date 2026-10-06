@@ -87,7 +87,7 @@
   </div>
   <label>Your GitHub username (recorded as the editor, and default assignee)</label><input id="sMe" placeholder="osouthgate">
   <label>Fine-grained personal access token</label><input id="sToken" type="password" autocomplete="off" placeholder="github_pat_...">
-  <div class="hint">Create it at GitHub &rarr; Settings &rarr; Developer settings &rarr; Fine-grained tokens. Limit it to this one repository with <b>Contents: Read and write</b>. It is kept only in this browser (localStorage) and is sent only to api.github.com.</div>
+  <div class="hint"><a id="patLink" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Create a fine-grained token on GitHub &rarr;</a> (the link pre-fills the name, expiry and <b>Contents: Read and write</b>). On that page choose <b>Only select repositories</b> and pick just the repo that holds your board file. The token is kept only in this browser (localStorage) and is sent only to api.github.com.</div>
   <div class="actions"><button id="sForget" class="danger">Forget token</button><button id="sCancel">Cancel</button><button id="sSave" class="primary">Save &amp; connect</button></div>
 </dialog>
 
@@ -393,6 +393,12 @@
 
   // ---- settings ---------------------------------------------------------------
   $('btnSettings').onclick = () => { const c = cfg(); $('sRepo').value = c.repo; $('sBranch').value = c.branch; $('sPath').value = c.path; $('sMe').value = c.me; $('sToken').value = ''; $('sToken').placeholder = c.token ? '(token saved — leave blank to keep)' : 'github_pat_...'; $('dlgSettings').showModal(); };
+  const patUrl = () => { const owner = ($('sRepo').value.trim().split('/')[0] || '');
+    const q = new URLSearchParams({ name: 'Team Board', description: 'Team board: read and write tasks.json', expires_in: '90', contents: 'write' });
+    if (/^[\w.-]+$/.test(owner)) q.set('target_name', owner);
+    return 'https://github.com/settings/personal-access-tokens/new?' + q; };
+  $('sRepo').addEventListener('input', () => { $('patLink').href = patUrl(); });
+  $('btnSettings').addEventListener('click', () => { $('patLink').href = patUrl(); });
   $('sCancel').onclick = () => $('dlgSettings').close();
   $('sForget').onclick = () => { LS.del('kb_token'); $('dlgSettings').close(); state = DEFAULT(); sha = null; lastSyncOk = false; render(); setStatus('Token removed'); };
   $('sSave').onclick = () => {
