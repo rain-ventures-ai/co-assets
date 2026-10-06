@@ -267,7 +267,7 @@
     const dc = doneColId(), names = [...new Set([...state.clients, ...state.tasks.map(t => t.client)].filter(Boolean))];
     return names.map(n => { const ts = state.tasks.filter(t => t.client === n), open = ts.filter(t => t.column !== dc);
       return { name: n, open: open.length, lvl: open.reduce((m, t) => Math.max(m, urgency(t).lvl), -1), rec: ts.reduce((m, t) => (t.updated > m ? t.updated : m), '') }; })
-      .sort((a, b) => b.lvl - a.lvl || (a.rec < b.rec ? 1 : a.rec > b.rec ? -1 : 0) || a.name.localeCompare(b.name));
+      .sort((a, b) => b.lvl - a.lvl || ((state.clients.indexOf(a.name) + 1 || 999) - (state.clients.indexOf(b.name) + 1 || 999)) || a.name.localeCompare(b.name));   // stable: only a change in urgency reorders
   }
   const setClient = v => { $('fClient').value = v; closePops(); render(); };
   function clientPill(c) {
@@ -279,13 +279,20 @@
     const box = $('clientBar'); if (!box || !state) return; box.textContent = '';
     const total = state.tasks.filter(t => t.column !== doneColId()).length, sel = $('fClient').value;
     const all = el('button', 'cpill all' + (sel ? '' : ' on'), 'All'); all.type = 'button'; all.setAttribute('aria-pressed', String(!sel)); all.title = 'Show all clients'; if (total) all.append(el('span', 'cn', String(total))); all.onclick = () => setClient(''); box.append(all);
-    let list = clientRank(); if (sel) list = [...list.filter(c => c.name === sel), ...list.filter(c => c.name !== sel)];
-    const shown = []; for (const c of list) { const b = clientPill(c); box.append(b); if (box.scrollWidth > box.clientWidth + 1) { b.remove(); break; } shown.push(b); }
-    let rest = list.slice(shown.length);
+    const list = clientRank(); let n = 0;                        // n = how many pills fit, in their natural order
+    for (const c of list) { const b = clientPill(c); box.append(b); if (box.scrollWidth > box.clientWidth + 1) { b.remove(); break; } n++; }
+    // the selected client must stay visible, but it takes the LAST visible slot instead of jumping to the front
+    let order = list.slice(); const si = list.findIndex(c => c.name === sel);
+    if (si >= n && n > 0) { order = list.filter(c => c.name !== sel); order.splice(n - 1, 0, list[si]); }
+    const fits = () => box.scrollWidth <= box.clientWidth + 1;
+    box.querySelectorAll('.cpill:not(.all)').forEach(b => b.remove()); const shown = [];
+    for (let i = 0; i < n; i++) { const b = clientPill(order[i]); box.append(b); shown.push(b); }
+    while (!fits() && shown.length > 1) { shown.pop().remove(); n--; }
+    let rest = order.slice(shown.length);
     if (rest.length) {
       const more = el('button', 'cpill more'); more.type = 'button'; more.setAttribute('aria-haspopup', 'true'); box.append(more);
       const label = () => { more.textContent = `+${rest.length} ▾`; };
-      label(); while (box.scrollWidth > box.clientWidth + 1 && shown.length) { shown.pop().remove(); rest = list.slice(shown.length); label(); }
+      label(); while (box.scrollWidth > box.clientWidth + 1 && shown.length) { shown.pop().remove(); rest = order.slice(shown.length); label(); }
       more.onclick = e => { e.stopPropagation(); const pop = $('clientPop'); if (!pop.hidden) { closePops(); return; } closePops();
         pop.textContent = ''; rest.forEach(c => { const b = el('button', 'cmenu' + ($('fClient').value === c.name ? ' on' : '')); b.type = 'button'; b.style.setProperty('--cc', `hsl(${clientHue(c.name)} 72% 52%)`);
           b.append(el('i', 'cdotc'), el('span', 'nm', c.name), el('span', 'cn', c.open ? String(c.open) : '')); b.onclick = () => setClient(c.name); pop.append(b); });
@@ -439,7 +446,9 @@
 
   function renderStats() {
     const attn = state.tasks.filter(t => t.column !== doneColId() && needsAttention(t)).length;
-    $('btnAttn').hidden = !attn; $('attnN').textContent = attn ? String(attn) : ''; $('btnAttn').classList.toggle('on', $('fAttn').checked); $('attnCount').textContent = attn ? `(${attn})` : '';
+    const attnTasks = state.tasks.filter(t => t.column !== doneColId() && needsAttention(t)), on = $('fAttn').checked, ab = $('btnAttn');
+    ab.hidden = !attn && !on; $('attnN').textContent = String(attn); $('attnT').textContent = on ? ' needs attention ✕' : (attn === 1 ? ' needs attention' : ' need attention'); ab.classList.toggle('on', on); $('attnCount').textContent = attn ? `(${attn})` : '';
+    ab.title = (on ? 'Showing only cards that need attention: click to show everything.\n' : 'Overdue, or an agent claim that is stale, stuck or blocked. Click to show only these.\n') + attnTasks.slice(0, 4).map(t => '• ' + t.title).join('\n') + (attnTasks.length > 4 ? `\n…and ${attnTasks.length - 4} more` : '');
     const fresh = state.tasks.filter(isFresh).length, bell = $('btnUnread'), bd = $('unreadBadge');
     bd.textContent = fresh > 99 ? '99+' : String(fresh); bd.hidden = !fresh; bell.classList.toggle('on', freshOnly);
     bell.title = fresh ? `${fresh} card${fresh > 1 ? 's' : ''} with new comments or changes${freshOnly ? ' (showing only these; click to show all)' : ' (click to show only these)'}` : (cfg().me ? 'Nothing new' : 'Set your GitHub username in Settings to see unread markers');
