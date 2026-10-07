@@ -499,8 +499,13 @@ a.mref { color: var(--accent); font-weight: 600; text-decoration: none; backgrou
 .movebar .mvrow { display: flex; gap: 8px; } .droptgt { flex: 1 1 0; min-width: 0; min-height: 64px; display: flex; align-items: center; justify-content: center; text-align: center; border: 2px dashed var(--border); border-radius: 12px; font-weight: 600; font-size: 14px; padding: 6px; background: var(--panel); }
 .droptgt.over { border-style: solid; border-color: var(--accent); background: var(--accent-soft); color: var(--accent); transform: scale(1.04); }
 
-header #boardSw { max-width: 190px; font-weight: 600; }
-@media (max-width: 700px) { header #boardSw { max-width: 120px; } }
 .kitbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 18px; font-size: 13px; background: var(--header); border-bottom: 1px solid var(--border); color: var(--text, inherit); }
 .kitbar[hidden] { display: none; }
 .blist { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; } .brow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; } .brow .bname { flex: 1; font-weight: 600; overflow-wrap: anywhere; } .brow .bcur { font-size: 12px; color: var(--muted); }
+header #boardBtn.logo { display: inline-grid; width: auto; min-width: 32px; padding: 0 6px; border: 0; color: #fff; font-size: 12px; font-weight: 800; letter-spacing: .04em; cursor: pointer; }
+.bbadge { display: inline-grid; place-items: center; min-width: 30px; height: 22px; padding: 0 5px; border-radius: 6px; color: #fff; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; flex: 0 0 auto; }
+.boardpop { left: 0; min-width: 320px; } .bpmanage { justify-content: flex-start; } .bphead { font-size: 12px; color: var(--muted); padding: 2px 6px 6px; }
+.bprow, .bpmanage { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: 0; border-radius: 8px; padding: 6px; color: inherit; font: inherit; cursor: pointer; }
+.bprow:hover, .bpmanage:hover { background: var(--accent-soft); } .bprow.cur .bpname { font-weight: 700; } .bpname { flex: 1; overflow-wrap: anywhere; } .bpmark { color: var(--accent); }
+.bpmanage { border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; margin-top: 4px; color: var(--muted); font-size: 13px; }
+header .boardwrap { order: 0; }
