@@ -405,7 +405,7 @@
     state.people.forEach(p => { const on = w === p.github, b = el('button', 'pq' + (on ? ' on' : '')); b.type = 'button'; b.setAttribute('aria-pressed', String(on)); b.title = on ? 'Show everyone' : `Only @${p.github}'s tasks`;
       b.append(avatar(p.github)); b.onclick = () => { $('fWho').value = on ? '' : p.github; render(); }; pq.append(b); });
   }
-  function closePops() { ['clientPop', 'filterPop'].forEach(id => { $(id).hidden = true; }); $('btnFilter').setAttribute('aria-expanded', 'false'); }
+  function closePops() { ['clientPop', 'filterPop', 'boardPop'].forEach(id => { $(id).hidden = true; }); $('btnFilter').setAttribute('aria-expanded', 'false'); $('boardBtn').setAttribute('aria-expanded', 'false'); }
   function placePop(pop) { if (window.matchMedia('(max-width: 760px)').matches) pop.style.top = (document.querySelector('header').getBoundingClientRect().bottom + 6) + 'px'; else pop.style.top = ''; }
 
   // ---- keeping the app itself fresh -----------------------------------------------------------------------
@@ -1352,17 +1352,26 @@
     if ($('sToken').value.trim()) LS.set('kb_token', $('sToken').value.trim()); stashBoard(); $('dlgSettings').close();
     if (moved) { location.replace(boardUrl()); return; } load();
   };
-  // header board switcher: shown when this browser knows two or more boards
-  function renderSwitcher() { const sw = $('boardSw'); if (!sw) return; const cur = LS.get('kb_repo'), repos = Object.keys(boardsMap()).sort();
-    sw.replaceChildren(...repos.map(r => { const o = document.createElement('option'); o.value = r; o.textContent = r; o.selected = r === cur; return o; }));
-    sw.hidden = repos.length < 2;   // add and remove boards in Settings → Boards
-    sw.onchange = () => { const v = sw.value; sw.value = cur; activateBoard(v); location.replace(boardUrl()); }; }
+  // The logo is the board switcher: a badge with the repo's initials (rain-ventures-ai/consulting → RVAC) in a colour of its own.
+  const boardInitials = repo => String(repo || '').split('/').flatMap(p => p.replace(/([a-z])([A-Z])/g, '$1 $2').split(/[\s_.-]+/)).filter(Boolean).map(w => w[0].toUpperCase()).join('').slice(0, 4) || '▦';
+  const boardColour = repo => { let h = 0; for (const ch of String(repo || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `hsl(${h % 360} 58% 38%)`; };
+  function badge(repo, cls) { const b = el('span', cls || 'bbadge', boardInitials(repo)); b.style.background = boardColour(repo); return b; }
+  function renderSwitcher() {
+    const btn = $('boardBtn'), pop = $('boardPop'); if (!btn) return; const cur = LS.get('kb_repo'), repos = Object.keys(boardsMap()).sort();
+    btn.textContent = cur ? boardInitials(cur) : '▦'; if (cur) btn.style.background = boardColour(cur); btn.title = cur ? `Board: ${cur} (click to switch)` : 'Board'; btn.setAttribute('aria-label', btn.title);
+    pop.textContent = ''; pop.append(el('div', 'bphead', 'Boards'));
+    repos.forEach(r => { const row = el('button', 'bprow' + (r === cur ? ' cur' : '')); row.type = 'button'; row.append(badge(r), el('span', 'bpname', r), el('span', 'bpmark', r === cur ? '✓' : ''));
+      row.onclick = () => { closePops(); if (r !== cur) { activateBoard(r); location.replace(boardUrl()); } }; pop.append(row); });
+    const m = el('button', 'bpmanage', 'Manage boards…'); m.type = 'button'; m.onclick = () => { closePops(); $('btnSettings').click(); settingsTab('boards'); }; pop.append(m);
+    btn.onclick = e => { e.stopPropagation(); const open = pop.hidden; closePops(); if (open) { placePop(pop); pop.hidden = false; btn.setAttribute('aria-expanded', 'true'); } };
+    pop.onclick = e => e.stopPropagation();
+  }
   renderSwitcher();
   // Settings → Boards: the list, add an existing board, and the new-board prompt for Claude
   function renderBoards() {
     const box = $('bList'), cur = LS.get('kb_repo'), repos = Object.keys(boardsMap()).sort(); box.textContent = '';
     if (!repos.length) box.append(el('div', 'hint', 'No board yet. Use Connection to connect one.'));
-    repos.forEach(r => { const row = el('div', 'brow'), name = el('span', 'bname', r); row.append(name);
+    repos.forEach(r => { const row = el('div', 'brow'), name = el('span', 'bname', r); row.append(badge(r), name);
       if (r === cur) row.append(el('span', 'bcur', 'this board'));
       else { const o = el('button', 'small', 'Open'), x = el('button', 'small danger', 'Remove');
         o.onclick = () => { activateBoard(r); location.replace(boardUrl()); };
