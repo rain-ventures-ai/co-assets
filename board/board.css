@@ -358,9 +358,8 @@ html[data-style="colorful"] .card { border: 2px solid transparent; padding: 9px 
   background: linear-gradient(135deg, color-mix(in srgb, var(--cc) 11%, var(--card)), color-mix(in srgb, var(--uc) 7%, var(--card))) padding-box,
               linear-gradient(90deg, var(--cc) 0%, var(--cc) 14%, var(--uc) 86%, var(--uc) 100%) border-box; }
 html[data-style="colorful"] .card:hover { background: linear-gradient(135deg, color-mix(in srgb, var(--cc) 16%, var(--card)), color-mix(in srgb, var(--uc) 11%, var(--card))) padding-box, linear-gradient(90deg, var(--cc) 0%, var(--cc) 14%, var(--uc) 86%, var(--uc) 100%) border-box; }
-html[data-style="colorful"] .col { --colx: var(--muted); background: linear-gradient(180deg, color-mix(in srgb, var(--colx) 20%, var(--panel)), var(--panel) 190px); }
-html[data-style="colorful"] .col[data-col="backlog"] { --colx: #8e4ec6; } html[data-style="colorful"] .col[data-col="todo"] { --colx: #3e63dd; } html[data-style="colorful"] .col[data-col="in-progress"] { --colx: #f76b15; } html[data-style="colorful"] .col[data-col="done"] { --colx: #30a46c; }
-html[data-style="colorful"] .col h2 { color: color-mix(in srgb, var(--colx) 70%, var(--text)); } html[data-style="colorful"] .col h2 .dot { background: var(--colx); }
+html[data-style="colorful"] .col { --colx: var(--muted); }   /* columns stay neutral so the card borders are the only colour */
+html[data-style="colorful"] .col h2 .dot { background: var(--muted); }
 html[data-style="colorful"] .trow:not(.thead) { box-shadow: inset 4px 0 0 var(--cc); background-image: linear-gradient(90deg, color-mix(in srgb, var(--cc) 7%, transparent), transparent 40%); }
 html[data-style="colorful"] .lsec[data-col="backlog"] .spill { background: color-mix(in srgb, #8e4ec6 18%, transparent); color: #8e4ec6; }
 html[data-style="colorful"] .pill { border-left-color: var(--cc); background: color-mix(in srgb, var(--cc) 14%, var(--panel)); box-shadow: inset -3px 0 0 var(--uc); }
