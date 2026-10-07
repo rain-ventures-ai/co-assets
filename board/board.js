@@ -1013,7 +1013,12 @@
   document.addEventListener('click', closePops); document.addEventListener('keydown', e => { if (e.key === 'Escape') closePops(); });
   $('btnAttn').onclick = () => { $('fAttn').checked = !$('fAttn').checked; render(); };
   $('fClear').onclick = () => { ['fClient', 'fWho', 'fLabel', 'fPrio'].forEach(id => { $(id).value = ''; }); $('fAttn').checked = false; $('fHideDone').checked = false; freshOnly = false; closePops(); render(); };
-  { let rz = null; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(renderTopbar, 120); }); }
+  // re-fit the client pills whenever their available width changes (window resize, avatars/status/labels in the header changing, fonts loading)
+  { let rz = null, lastW = 0; const refit = () => { clearTimeout(rz); rz = setTimeout(renderTopbar, 60); };
+    window.addEventListener('resize', refit);
+    const wrap = document.querySelector('.clientwrap');
+    if (wrap && window.ResizeObserver) new ResizeObserver(() => { const w = Math.round(wrap.clientWidth); if (w !== lastW) { lastW = w; refit(); } }).observe(wrap);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(refit); }
   ['fClient', 'fWho', 'fLabel', 'fPrio', 'fAttn', 'fHideDone'].forEach(i => $(i).addEventListener('change', render));
   const canPoll = () => !busy && !document.hidden && !document.querySelector('dialog[open]:not(#dlgCard)') && !document.querySelector('.card.dragging') && lastSyncOk;
   setInterval(() => { if (canPoll()) load(true); }, 30000);   // conditional (ETag) so unchanged polls are 304s

@@ -456,3 +456,4 @@ header .badge { top: -6px; right: -6px; }
 .addbar[hidden], .optsec[hidden], .addbar button[hidden], .lplus[hidden], .lnew[hidden] { display: none !important; }
 @media (max-width: 760px) { .addbar button { min-height: 40px; } .tag.lplus { min-height: 0; } .dsec { margin-top: 14px; padding-top: 12px; } .dtitle { font-size: 20px; } }
 .cbtns[hidden] { display: none !important; }
+
