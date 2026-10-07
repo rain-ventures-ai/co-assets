@@ -484,3 +484,5 @@ a.mref { color: var(--accent); font-weight: 600; text-decoration: none; backgrou
 .suggest { position: absolute; left: 0; right: 0; top: calc(100% - 2px); z-index: 30; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.28); padding: 4px; max-height: 240px; overflow: auto; } .suggest[hidden] { display: none; }
 .sug { display: flex; gap: 10px; align-items: baseline; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; border-radius: 7px; cursor: pointer; min-height: 0; color: var(--text); } .sug.on, .sug:hover { background: var(--accent-soft); } .sug .sm { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 @media (max-width: 760px) { .sug { min-height: 44px; align-items: center; } }
+.hint.ok { color: var(--ok); } .hint.bad { color: var(--danger); }
+.sesslink { display: inline-block; margin-top: 4px; color: var(--accent); font-weight: 600; font-size: 13px; }

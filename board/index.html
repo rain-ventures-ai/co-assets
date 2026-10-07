@@ -48,11 +48,17 @@
   <div class="actions"><button id="cfDiscard">Discard my change</button><button id="cfApply" class="primary">Apply my change anyway</button></div>
 </dialog>
 
+<dialog id="dlgSend" class="settings" aria-label="Send to Claude">
+  <div class="sethead"><h3>Send to Claude?</h3></div>
+  <p>Your comment will be posted, then <b>your Claude routine</b> will be started to work on task <b id="sendNum"></b>. It will report back on this task with comments, and hand it back to you when it is done. It starts in about one to two minutes.</p>
+  <div class="actions"><button id="sendNo" type="button">Cancel</button><span class="spacer"></span><button id="sendPost" type="button">Post comment only</button><button id="sendYes" type="button" class="primary">Send to Claude</button></div>
+</dialog>
 <dialog id="dlgSettings" class="settings">
   <div class="sethead"><h3>Settings</h3><button id="sClose" class="ico" aria-label="Close settings">✕</button></div>
   <div class="stabs" role="tablist" aria-label="Settings sections">
     <button id="tabGeneral" role="tab" aria-selected="true" data-tab="general">General</button>
     <button id="tabConn" role="tab" aria-selected="false" data-tab="conn">Connection</button>
+    <button id="tabClaude" role="tab" aria-selected="false" data-tab="claude">Claude</button>
   </div>
 
   <div id="panelGeneral" role="tabpanel" aria-labelledby="tabGeneral">
@@ -80,6 +86,16 @@
     <label for="sToken">Fine-grained personal access token</label><input id="sToken" type="password" autocomplete="off" placeholder="github_pat_...">
     <div class="hint"><a id="patLink" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Create a fine-grained token on GitHub &rarr;</a> (the link pre-fills the name, expiry and <b>Contents: Read and write</b> plus <b>Issues: Read and write</b>, needed for the Create issue button). Choose <b>Only select repositories</b> and pick just the repo that holds your board file. If the repo belongs to an organisation, set <b>Resource owner</b> to that organisation. The token is kept only in this browser (localStorage) and is sent only to api.github.com.</div>
     <div class="actions"><button id="sForget" class="danger">Forget token</button><span class="spacer"></span><button id="sCancel">Cancel</button><button id="sSave" class="primary">Save &amp; connect</button></div>
+  </div>
+  <div id="panelClaude" role="tabpanel" aria-labelledby="tabClaude" hidden>
+    <p class="hint" style="margin-top:0">Typing <b>@claude</b> in a comment can start <b>your own</b> Claude routine. Each person sets up their own; these values stay in this browser (like the GitHub token) and travel with "Copy settings code".</p>
+    <label for="sClaudeUrl">Routine trigger URL</label><input id="sClaudeUrl" placeholder="https://api.anthropic.com/v1/claude_code/routines/trig_…/fire" autocomplete="off">
+    <label for="sClaudeTok">Routine token</label><input id="sClaudeTok" type="password" autocomplete="off" placeholder="sk-ant-oat01-…">
+    <div class="hint">From claude.ai/code/routines → your routine → Edit → add an <b>API</b> trigger → copy the URL and generate a token. The token can only start that one routine.</div>
+    <label for="sCronKey">cron-job.org API key</label><input id="sCronKey" type="password" autocomplete="off" placeholder="API key">
+    <div class="hint">Browsers can't call a routine directly, so a one-off job on your free <a href="https://console.cron-job.org/" target="_blank" rel="noopener noreferrer">cron-job.org</a> account makes the call (Settings → API → enable, create a key). <b>What cron-job.org sees:</b> your routine token and the task number (never the task's text); the job is deleted as soon as it has run. Starting takes about one to two minutes.</div>
+    <div id="sClaudeMsg" class="hint" role="status"></div>
+    <div class="actions"><button id="sClaudeTest" type="button">Test cron-job.org key</button><span class="spacer"></span><button id="sClaudeSave" type="button" class="primary">Save</button></div>
   </div>
 </dialog>
 

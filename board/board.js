@@ -14,7 +14,7 @@
     ['repo', 'branch', 'path'].forEach(k => { const v = q.get(k); if (!v || LS.get('kb_' + k)) return;
       if (k === 'repo' ? /^[\w.-]+\/[\w.-]+$/.test(v) : /^[\w./-]+$/.test(v)) LS.set('kb_' + k, v); }); })();
   // ---- move settings between browsers/devices: one pasteable code or a setup link (token included) --------------
-  const XFER = { text: ['repo', 'branch', 'path', 'me', 'token', 'collapsed', 'undated', 'tab'], pick: { theme: ['auto', 'light', 'dark', 'midnight', 'sand'], style: ['classic', 'colorful'], view: ['board', 'list', 'cal', 'sched'] } };
+  const XFER = { text: ['repo', 'branch', 'path', 'me', 'token', 'collapsed', 'undated', 'tab', 'claude_url', 'claude_token', 'cron_key'], pick: { theme: ['auto', 'light', 'dark', 'midnight', 'sand'], style: ['classic', 'colorful'], view: ['board', 'list', 'cal', 'sched'] } };
   const xEnc = o => { const b = new TextEncoder().encode(JSON.stringify(o)); let s = ''; b.forEach(c => s += String.fromCharCode(c)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
   const xDec = t => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))));
   function exportCode() { const o = {}; XFER.text.concat(Object.keys(XFER.pick)).forEach(k => { const v = LS.get('kb_' + k, null); if (v !== null && v !== '') o[k] = v; }); return 'kbcfg1.' + xEnc(o); }
@@ -605,9 +605,24 @@
   async function postComment() {
     const ta = $('cmText'), text = ta.value.trim(), id = commentsFor; if (!text || !id) return;
     if (busy) { toast('Busy, try again in a moment', true); return; }
-    const n0 = (state.tasks.find(x => x.id === id) || { comments: [] }).comments.length; ta.value = ''; autosize(ta); $('cmPost').disabled = true;
-    await mutate(n => { const t = n.tasks.find(x => x.id === id); if (!t) return; t.comments.push({ id: 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), at: nowIso(), by: cfg().me || 'someone', text }); stamp(t); }, `Comment: ${titleOf(id)}`, [id]);
+    let send = false;
+    if (wantsClaude(text)) {
+      if (!claudeReady()) toast('To make @claude start your routine, set it up in Settings → Claude. Posting as a normal comment.');
+      else if (!cfg().me) toast('Set your GitHub username in Settings first. Posting as a normal comment.', true);
+      else { const t0 = state.tasks.find(x => x.id === id), other = t0 && t0.claim && claimState(t0.claim) === 'running' && String(t0.claim.session_id || '').indexOf('pending-') !== 0;
+        if (other && !confirm(`${t0.claim.agent} already has a running session on this task. Send to Claude anyway?`)) { /* post only */ }
+        else { const a = await askSend(t0 ? t0.num : '?'); if (a === 'cancel') return; send = a === 'send'; } }
+    }
+    const n0 = (state.tasks.find(x => x.id === id) || { comments: [] }).comments.length, cid = 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), who = cfg().me; ta.value = ''; autosize(ta); $('cmPost').disabled = true;
+    await mutate(n => { const t = n.tasks.find(x => x.id === id); if (!t) return; t.comments.push({ id: cid, at: nowIso(), by: who || 'someone', text });
+      if (send) t.claim = { agent: 'claude', on_behalf_of: who, session_id: 'pending-' + Date.now().toString(36), session_url: '', host: 'cron-job.org relay', status: 'running', note: `Sent to Claude by @${who}; waiting for the routine to start (about 1 to 2 minutes)`, claimed_at: nowIso(), heartbeat_at: nowIso() };
+      stamp(t); }, `Comment: ${titleOf(id)}`, [id]);
     $('cmPost').disabled = false;
+    if (send && (state.tasks.find(x => x.id === id) || { comments: [] }).comments.length > n0) {
+      const t1 = state.tasks.find(x => x.id === id);
+      try { const j = await sendToClaude(t1, who, cid); toast('Sent to Claude. It should start within about two minutes.'); watchClaudeJob(j.jobId, id, who); }
+      catch (e) { toast('Not sent: ' + e.message, true); edit(id, t => { if (t.claim && String(t.claim.session_id || '').indexOf('pending-') === 0) { t.claim.status = 'stuck'; t.claim.note = 'Send to Claude failed: ' + e.message; } }, 'Send to Claude failed'); }
+    }
     if ((state.tasks.find(x => x.id === id) || { comments: [] }).comments.length <= n0) { ta.value = text; autosize(ta); toast('Comment not saved. Your text is still in the box.', true); }
     cmSig = ''; renderComments(); ta.focus();
   }
@@ -962,6 +977,7 @@
     const top = el('div', 'cltop'); top.append(el('span', 'pulse'), el('b', null, k.agent), document.createTextNode(`${k.on_behalf_of ? ' for @' + k.on_behalf_of : ''} · ${st} · beat ${ago(k.heartbeat_at || k.claimed_at)}`)); dl.append(top);
     if (k.note) dl.append(el('div', 'cnote', k.note));
     dl.append(el('div', 'host', [k.session_id && 'session ' + k.session_id, k.host, k.branch].filter(Boolean).join(' · ')));
+    if (k.session_url && safeUrl(k.session_url)) { const sa = el('a', 'sesslink', 'Open the Claude session ↗'); sa.href = safeUrl(k.session_url); sa.target = '_blank'; sa.rel = 'noopener noreferrer'; dl.append(sa); }
   }
   $('cStuck').onclick = () => edit(editing, t => { if (t.claim) { t.claim.status = 'stuck'; t.claim.note = (t.claim.note ? t.claim.note + ' | ' : '') + `marked stuck by ${me() || 'human'}`; } }, `Mark stuck: ${titleOf(editing)}`);
   $('cRelease').onclick = () => { if (!confirm('Release the agent claim? The agent session may still be running.')) return; edit(editing, t => { t.claim = null; }, `Release claim: ${titleOf(editing)}`); };
@@ -1077,10 +1093,91 @@
   }
   attachSuggest($('cmText')); attachSuggest($('cDetails'));
 
+  // ---- send to Claude: browsers can't call a routine's trigger directly (no CORS), so a one-off cron-job.org job makes the call.
+  // Only the task NUMBER and the requester travel through it (the routine reads the real content from the board); the job is deleted once it has run.
+  const CRON = LS.get('kb_cron_api', 'https://api.cron-job.org'), FAST = !!LS.get('kb_cron_fast') /* local testing only */, FIRE_RE = /^https:\/\/api\.anthropic\.com\/v1\/claude_code\/routines\/trig_[A-Za-z0-9]+\/fire$/;
+  const claudeCfg = () => ({ url: LS.get('kb_claude_url'), token: LS.get('kb_claude_token'), cron: LS.get('kb_cron_key') });
+  const claudeReady = () => { const c = claudeCfg(); return FIRE_RE.test(c.url) && !!c.token && !!c.cron; };
+  const cronFetch = (method, path, body) => fetch(CRON + path, { method, headers: { Authorization: 'Bearer ' + claudeCfg().cron, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const pad = n => String(n).padStart(2, '0');
+  const utcStamp = d => `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00`;
+  function routineText(t, who, cid) {
+    const { c, skill, agents } = boardInfo();
+    return [`Board request from @${who} for task #${t.num}${cid ? ` (comment ${cid})` : ''}. Board repo: ${c.repo} (branch ${c.branch}).`,
+      `Read first: ${agents} and ${skill}.`,
+      `Act for @${who}: BOARD_USER=${who} BOARD_AGENT=claude.`,
+      `1. python3 board/board.py claim '#${t.num}' --for ${who} --agent claude --session <your session id> --force --note "working"`,
+      `2. python3 board/board.py show '#${t.num}' and python3 board/board.py comments '#${t.num}', then do what @${who} asked in the newest comment that mentions @claude.`,
+      `3. Report on the board only: comment '#${t.num}' for progress or questions, move / assign / link as needed. When finished: comment with the outcome, assign the task back to ${who}, and run board.py done '#${t.num}' --note "<result>".`].join('\n');
+  }
+  async function sendToClaude(t, who, cid) {   // returns { jobId } or throws
+    const c = claudeCfg(), now = new Date(), at = new Date(Math.ceil((now.getTime() + 75000) / 60000) * 60000), exp = new Date(at.getTime() + 60000);
+    const job = { url: c.url, enabled: true, saveResponses: true, title: `kbclaude:${Math.floor(now.getTime() / 1000)}:#${t.num}`, requestMethod: 1,
+      requestTimeout: 30, redirectSuccess: false,
+      extendedData: { headers: { Authorization: 'Bearer ' + c.token, 'anthropic-beta': 'experimental-cc-routine-2026-04-01', 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ text: routineText(t, who, cid) }) },
+      schedule: { timezone: 'UTC', expiresAt: Number(utcStamp(exp)), hours: [at.getUTCHours()], mdays: [at.getUTCDate()], months: [at.getUTCMonth() + 1], wdays: [-1], minutes: [at.getUTCMinutes()] } };
+    const r = await cronFetch('PUT', '/jobs', { job });
+    if (r.status === 401 || r.status === 403) throw new Error('cron-job.org rejected the API key');
+    if (r.status === 429) throw new Error('cron-job.org rate limit reached, try again in a minute');
+    if (!r.ok) throw new Error('cron-job.org error ' + r.status);
+    return { jobId: (await r.json()).jobId, at };
+  }
+  async function watchClaudeJob(jobId, taskId, who) {   // find the session URL in the routine's response, record it on the card, delete the job
+    const sleep = ms => new Promise(r => setTimeout(r, ms)); let session = null, err = '';
+    try {
+      for (let i = 0; i < 24 && !session && !err; i++) {
+        await sleep(FAST ? 300 : (i === 0 ? 70000 : 15000));
+        const hr = await cronFetch('GET', `/jobs/${jobId}/history`); if (!hr.ok) continue;
+        const h = (await hr.json()).history || []; if (!h.length) continue;
+        const it = h[0]; if (it.status && it.status !== 1 && it.httpStatus && it.httpStatus >= 400) err = `routine returned HTTP ${it.httpStatus}`;
+        const dr = await cronFetch('GET', `/jobs/${jobId}/history/${it.identifier}`); let body = '';
+        if (dr.ok) { const d = (await dr.json()).jobHistoryDetails || {}; body = d.body || ''; }
+        const m = /https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]+/.exec(body); if (m) session = { url: m[0], id: m[0].split('/').pop() };
+        else if (!err && it.httpStatus && it.httpStatus < 400) session = { url: '', id: 'started' };
+      }
+    } catch (e) { err = 'could not read the result from cron-job.org'; }
+    try { await cronFetch('DELETE', `/jobs/${jobId}`); } catch {}   // never leave the routine token parked there
+    await edit(taskId, t => {
+      if (!t.claim || String(t.claim.session_id || '').indexOf('pending-') !== 0) return;   // the routine already took over the claim
+      if (session) { t.claim.session_id = session.id; t.claim.session_url = session.url; t.claim.note = `Claude is working for @${who}`; t.claim.heartbeat_at = nowIso(); }
+      else { t.claim.status = 'stuck'; t.claim.note = `Send to Claude failed: ${err || 'no response from the routine'}`; }
+    }, session ? `Claude session started for #${(state.tasks.find(x => x.id === taskId) || {}).num}` : 'Send to Claude failed');
+    if (!session) toast('Send to Claude failed: ' + (err || 'no response'), true); else toast('Claude is working on it');
+  }
+  async function sweepClaudeJobs() {   // best-effort: remove finished/abandoned relay jobs (and the token they hold)
+    if (!claudeReady()) return;
+    try { const r = await cronFetch('GET', '/jobs'); if (!r.ok) return; const now = Date.now() / 1000;
+      for (const j of (await r.json()).jobs || []) { const m = /^kbclaude:(\d+):/.exec(j.title || ''); if (m && now - Number(m[1]) > 600) await cronFetch('DELETE', `/jobs/${j.jobId}`); } } catch {}
+  }
+  const wantsClaude = text => /(^|[\s(])@claude\b/i.test(String(text || ''));
+  function askSend(num) {   // 'send' | 'post' | 'cancel'
+    return new Promise(res => { const d = $('dlgSend'); $('sendNum').textContent = '#' + num; sendResolve = v => { sendResolve = null; if (d.open) d.close(); res(v); }; d.showModal(); });
+  }
+  let sendResolve = null;   // buttons resolve the choice directly (not via the dialog's close event)
+  $('sendYes').onclick = () => sendResolve && sendResolve('send');
+  $('sendPost').onclick = () => sendResolve && sendResolve('post');
+  $('sendNo').onclick = () => sendResolve && sendResolve('cancel');
+  $('dlgSend').addEventListener('cancel', () => { sendResolve && sendResolve('cancel'); });   // Esc
+  $('sClaudeSave').onclick = () => {
+    const u = $('sClaudeUrl').value.trim(), t = $('sClaudeTok').value.trim(), k = $('sCronKey').value.trim(), m = $('sClaudeMsg');
+    if (u && !FIRE_RE.test(u)) { m.textContent = 'The routine URL should look like https://api.anthropic.com/v1/claude_code/routines/trig_…/fire'; m.className = 'hint bad'; return; }
+    LS.set('kb_claude_url', u); LS.set('kb_claude_token', t); LS.set('kb_cron_key', k); m.textContent = 'Saved in this browser.'; m.className = 'hint ok';
+  };
+  $('sClaudeTest').onclick = async () => {
+    const m = $('sClaudeMsg'); $('sClaudeSave').onclick(); const c = claudeCfg();
+    if (!c.cron) { m.textContent = 'Add your cron-job.org API key first.'; m.className = 'hint bad'; return; }
+    m.textContent = 'Checking cron-job.org…'; m.className = 'hint';
+    try { const r = await cronFetch('GET', '/jobs'); m.textContent = r.ok ? `cron-job.org key works (${((await r.json()).jobs || []).length} jobs on the account). The routine itself is only tested when you first send something.` : (r.status === 401 ? 'cron-job.org rejected that API key.' : 'cron-job.org error ' + r.status); m.className = 'hint ' + (r.ok ? 'ok' : 'bad'); }
+    catch { m.textContent = 'Could not reach cron-job.org.'; m.className = 'hint bad'; }
+  };
+  setTimeout(sweepClaudeJobs, 5000);
+
   // ---- settings ---------------------------------------------------------------
   function settingsTab(name) {
-    ['general', 'conn'].forEach(n => { const on = n === name; $(n === 'general' ? 'panelGeneral' : 'panelConn').hidden = !on; $(n === 'general' ? 'tabGeneral' : 'tabConn').setAttribute('aria-selected', String(on)); });
+    const ids = { general: ['panelGeneral', 'tabGeneral'], conn: ['panelConn', 'tabConn'], claude: ['panelClaude', 'tabClaude'] };
+    Object.keys(ids).forEach(n => { const on = n === name; $(ids[n][0]).hidden = !on; $(ids[n][1]).setAttribute('aria-selected', String(on)); });
     if (name === 'conn') setTimeout(() => $('sRepo').focus(), 30);
+    if (name === 'claude') { $('sClaudeUrl').value = LS.get('kb_claude_url'); $('sClaudeTok').value = LS.get('kb_claude_token'); $('sCronKey').value = LS.get('kb_cron_key'); $('sClaudeMsg').textContent = ''; }
   }
   document.querySelectorAll('.stabs button').forEach(b => { b.onclick = () => settingsTab(b.dataset.tab); });
   $('sClose').onclick = $('sDone').onclick = () => $('dlgSettings').close();
