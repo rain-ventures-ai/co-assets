@@ -19,6 +19,13 @@ Each board has one **upgrade owner**: `settings.kit_owner` in `tasks.json`. If i
 
 ## Versions
 
+### v2 (schema 2)
+New boards can be set up with one command, and the web board has Settings → Boards.
+- `board.py init --person user:Name` sets up a new board repo: the kit, starter `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `.claude/settings.json` (only when missing) and an empty `tasks.json`. The starter files come from `templates/` in the kit and belong to the repo after that.
+- `NEW-BOARD.md` in the kit is the guide that the "new board" prompt in Settings → Boards points to.
+- Agent steps: run `kit-update` only. No data change.
+- Check: `python3 board/board.py kit-check` says v2 is current.
+
 ### v1 (schema 2)
 First kit version. The tools move from `rain-ventures-ai/consulting/board/` into co-assets.
 - Agent steps: run `kit-update` (no data change: schema 2 stays 2, so no migration). Make sure `AGENTS.md` in the repo keeps its own rules and links to `board/README.md` for the schema.

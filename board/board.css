@@ -503,3 +503,4 @@ header #boardSw { max-width: 190px; font-weight: 600; }
 @media (max-width: 700px) { header #boardSw { max-width: 120px; } }
 .kitbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 18px; font-size: 13px; background: var(--header); border-bottom: 1px solid var(--border); color: var(--text, inherit); }
 .kitbar[hidden] { display: none; }
+.blist { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; } .brow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; } .brow .bname { flex: 1; font-weight: 600; overflow-wrap: anywhere; } .brow .bcur { font-size: 12px; color: var(--muted); }

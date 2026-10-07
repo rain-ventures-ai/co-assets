@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "schema": 2,
   "files": {
     "board/board.py": "board.py",
