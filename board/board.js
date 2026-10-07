@@ -124,7 +124,7 @@
       if (res.status === 404) { await diagnose404(); return false; }
       if (res.status === 401 || res.status === 403) { setStatus('Token rejected or lacks access', 'err'); return false; }
       if (!res.ok) { setStatus(`GitHub error ${res.status}`, 'err'); return false; }
-      const data = await res.json(); sha = data.sha; etag = res.headers.get('ETag'); state = normalise(JSON.parse(b64d(data.content))); lastSyncOk = true; initSeen();
+      const data = await res.json(); sha = data.sha; etag = res.headers.get('ETag'); state = normalise(JSON.parse(b64d(data.content))); lastSyncOk = true; initSeen(); setTimeout(openFromHash, 30);
       setStatus('Synced ' + new Date().toLocaleTimeString(), 'ok'); render(); return true;
     } catch (e) { console.error(e); setStatus('Network or parse error', 'err'); return false; }
   }
@@ -983,6 +983,7 @@
   $('cRelease').onclick = () => { if (!confirm('Release the agent claim? The agent session may still be running.')) return; edit(editing, t => { t.claim = null; }, `Release claim: ${titleOf(editing)}`); };
 
   function fillDrawer(t, force) {
+    { $('dLink').onclick = () => copyText(`${location.origin}${location.pathname}${location.search}#${t.num}`, `Link to #${t.num} copied`); }
     { const nb = $('dNum'); nb.textContent = '#' + t.num + '  ⧉'; nb.title = `Task #${t.num}: click to copy the reference`; nb.onclick = () => copyText('#' + t.num, `Copied #${t.num}`); }
     const set = (x, v) => { if ((force || document.activeElement !== x) && x.value !== v) x.value = v; };
     const cl = [...new Set([...state.clients, t.client].filter(Boolean))];
@@ -1006,6 +1007,15 @@
   document.querySelectorAll('#addBar button').forEach(b => { b.onclick = () => {
     const k = b.dataset.sec; openSecs.add(k); const t = taskNow(); if (t) syncSections(t);
     const f = k === 'todos' ? document.querySelector('#cTodos .todonew') : $(k === 'links' ? 'cLinkNew' : 'cContactNew'); if (f) { f.scrollIntoView({ block: 'center' }); f.focus(); } }; });
+  // deep links: the address carries the task number (#13) while a card is open, and loading a URL with #13 opens that card
+  const hashNum = () => { const m = /^#(\d{1,5})$/.exec(location.hash); return m ? Number(m[1]) : null; };
+  const setHash = h => { try { history.replaceState(null, '', location.pathname + location.search + h); } catch {} };
+  function openFromHash() {
+    const n = hashNum(); if (n === null || !state) return;
+    const t = state.tasks.find(x => x.num === n); if (!t) { toast(`Task #${n} was not found on this board`, true); setHash(''); return; }
+    if (editing !== t.id || !$('dlgCard').open) openCard(t.id);
+  }
+  window.addEventListener('hashchange', openFromHash);
   function refreshDrawer() { const t = taskNow(); if (!t) { $('dlgCard').close(); return; } fillDrawer(t, false); }   // board data changed underneath an open card
 
   function openCard(id, focus) {
@@ -1014,10 +1024,10 @@
     $('dCreated').textContent = t.created ? 'Created ' + new Date(t.created).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + (t.createdBy ? ' by ' + t.createdBy : '') : '';
     fillDrawer(t, true); $('cmText').value = ''; autosize($('cmText')); $('cmActions').hidden = true; $('cmHint').hidden = !!cfg().me; $('cHistWrap').open = false;
     markSeen(id); render();
-    $('dlgCard').showModal(); $('cBody').scrollTop = 0; autosize($('cTitle'));
+    $('dlgCard').showModal(); $('cBody').scrollTop = 0; autosize($('cTitle')); setHash('#' + t.num);
     if (focus === 'comments') setTimeout(() => { $('cmSec').scrollIntoView({ block: 'start' }); $('cmText').focus(); }, 60);
   }
-  $('cClose').onclick = () => $('dlgCard').close();
+  $('cClose').onclick = () => { if (hashNum() !== null) setHash(''); $('dlgCard').close(); };
   // ---- GitHub issue from a card: creates an issue that carries the task and tells automation how to report back ----
   const issueLinkOf = t => { const r = new RegExp('^https://github\\.com/' + cfg().repo.replace(/[.]/g, '\\.') + '/issues/(\\d+)$', 'i'); for (const l of t.links) { const m = r.exec(l.url); if (m) return { url: l.url, n: m[1] }; } return null; };
   function syncIssueBtn(t) { const b = $('cIssue'), il = issueLinkOf(t); b.hidden = false; b.querySelector('.atxt').textContent = il ? ` Issue #${il.n}` : ' Create issue'; b.title = il ? 'Open the linked GitHub issue' : 'Create a GitHub issue for this task (so Claude or a teammate can work it from GitHub)'; }
@@ -1052,7 +1062,7 @@
     } catch (e) { toast('Could not reach GitHub', true); } finally { b.disabled = false; const t2 = taskNow(); if (t2) syncIssueBtn(t2); }
   };
   $('cAgent').onclick = () => { const t = taskNow(); if (t) copyText(agentPrompt(t), 'Task instructions copied for an agent'); };
-  $('dlgCard').addEventListener('close', () => { commitTitle(); closeDesc(true); commentsFor = null; });   // closing never loses typed text
+  $('dlgCard').addEventListener('close', () => { if (hashNum() !== null) setHash(''); commitTitle(); closeDesc(true); commentsFor = null; });   // closing never loses typed text
   $('cDelete').onclick = () => { const id = editing; if (!confirm(`Delete "${titleOf(id)}"?`)) return; const title = titleOf(id); editingDesc = false; $('dlgCard').close(); mutate(n => { n.tasks = n.tasks.filter(x => x.id !== id); }, `Delete task: ${title}`, [id]); };
 
   $('xCode').onclick = () => copyText(exportCode(), 'Settings code copied. It contains your token, so paste it only into your own devices.');
