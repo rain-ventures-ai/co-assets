@@ -471,3 +471,16 @@ dialog, dialog.drawer { max-width: 100%; } dialog * { min-width: 0; }
 dialog input, dialog select, dialog textarea { max-width: 100%; box-sizing: border-box; }
 @media (max-width: 760px) { #board, #board > .col, .col .cards, .col .add { max-width: 100%; min-width: 0; } .add input { min-width: 0; width: 100%; } img, video, svg { max-width: 100%; } }
 @media (max-width: 420px) { header { gap: 4px 6px; padding: 6px 8px; } header button { min-width: 36px !important; min-height: 38px; padding: 4px 4px; } header .seg button { min-width: 34px !important; padding: 6px 4px; } .logo { display: none; } }
+
+/* ---- task numbers, @mentions, suggestions ------------------------------------------------ */
+.numchip { border: 0; background: var(--panel); color: var(--muted); font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 4px 7px; border-radius: 6px; cursor: pointer; min-height: 0; flex: 0 0 auto; } .numchip:hover { color: var(--accent); background: var(--accent-soft); }
+.card .top .numchip { margin-right: 6px; } .numchip.big { font-size: 12.5px; padding: 6px 10px; }
+.numtag { color: var(--muted); font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; margin-right: 7px; }
+.mention { color: var(--accent); background: var(--accent-soft); border-radius: 5px; padding: 0 4px; font-weight: 600; } .mention.me { background: var(--accent); color: var(--on-accent); }
+a.mref { color: var(--accent); font-weight: 600; text-decoration: none; background: var(--accent-soft); border-radius: 5px; padding: 0 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; } a.mref:hover { text-decoration: underline; }
+.chip.mentionchip { background: var(--accent); color: var(--on-accent); font-weight: 700; }
+.cmcard.mine { border-left: 3px solid var(--accent); }
+.sugwrap { position: relative; }
+.suggest { position: absolute; left: 0; right: 0; top: calc(100% - 2px); z-index: 30; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.28); padding: 4px; max-height: 240px; overflow: auto; } .suggest[hidden] { display: none; }
+.sug { display: flex; gap: 10px; align-items: baseline; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; border-radius: 7px; cursor: pointer; min-height: 0; color: var(--text); } .sug.on, .sug:hover { background: var(--accent-soft); } .sug .sm { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+@media (max-width: 760px) { .sug { min-height: 44px; align-items: center; } }

@@ -55,10 +55,34 @@
   function linkify(parent, text) { // build DOM (no innerHTML): plain text plus safe http(s) links
     String(text || '').split(/(https?:\/\/[^\s<>"')]+)/g).forEach((part, i) => {
       if (i % 2 === 1 && safeUrl(part)) { const a = el('a', null, part); a.href = safeUrl(part); a.target = '_blank'; a.rel = 'noopener noreferrer'; parent.append(a); }
-      else if (part) parent.append(document.createTextNode(part));
+      else if (part) decorate(parent, part);
     });
   }
+  // @github highlights a known person or agent; #12 links to that task. Anything else stays plain text.
+  function decorate(parent, text) {
+    const re = /(?<![\w@#&\/])(@[A-Za-z0-9][A-Za-z0-9-]*|#\d{1,5})(?![\w])/g; let last = 0, m;
+    while ((m = re.exec(text))) {
+      const tok = m[1]; let node = null;
+      if (tok[0] === '@') { const g = tok.slice(1).toLowerCase(), known = state && ((state.people || []).some(p => String(p.github).toLowerCase() === g) || (state.agents || []).some(a => String(a).toLowerCase() === g));
+        if (known) { node = el('span', 'mention' + (g === (cfg().me || '').toLowerCase() ? ' me' : ''), tok); } }
+      else { const t = state && state.tasks.find(x => x.num === Number(tok.slice(1)));
+        if (t) { node = el('a', 'mref', tok); node.href = '#'; node.title = t.title; node.onclick = e => { e.preventDefault(); e.stopPropagation(); openCard(t.id); }; } }
+      if (!node) continue;
+      if (m.index > last) parent.append(document.createTextNode(text.slice(last, m.index)));
+      parent.append(node); last = m.index + tok.length;
+    }
+    if (last < text.length) parent.append(document.createTextNode(text.slice(last)));
+  }
 
+  // Task numbers (#12): stable, human-friendly, never reused. Every writer (this page and board.py) runs the same deterministic rule:
+  // unnumbered tasks get the next numbers in creation order, so concurrent writers converge instead of colliding.
+  function assignNums(d) {
+    let mx = 0; d.tasks.forEach(t => { if (Number.isInteger(t.num) && t.num > mx) mx = t.num; });
+    let next = Math.max(Number.isInteger(d.next_num) ? d.next_num : 1, mx + 1);
+    d.tasks.map((t, i) => [t, i]).filter(([t]) => !Number.isInteger(t.num)).sort((a, b) => String(a[0].created || '').localeCompare(String(b[0].created || '')) || a[1] - b[1])
+      .forEach(([t]) => { t.num = next++; });
+    d.next_num = next; return d;
+  }
   function normalise(obj) {
     const d = DEFAULT(), o = obj && typeof obj === 'object' ? obj : {};
     const people = Array.isArray(o.people) ? o.people : [];
@@ -66,7 +90,7 @@
       version: 2, settings: Object.assign(d.settings, o.settings || {}),
       columns: Array.isArray(o.columns) && o.columns.length ? o.columns : d.columns, people,
       agents: Array.isArray(o.agents) ? o.agents : d.agents, clients: Array.isArray(o.clients) && o.clients.length ? o.clients : d.clients,
-      labels: Array.isArray(o.labels) ? o.labels : [], tasks: Array.isArray(o.tasks) ? o.tasks : []
+      labels: Array.isArray(o.labels) ? o.labels : [], tasks: Array.isArray(o.tasks) ? o.tasks : [], next_num: o.next_num
     };
     n.tasks.forEach(t => { // tolerate v1 cards
       if (!Array.isArray(t.assignees)) { const p = people.find(p => p.name === t.owner || p.github === t.owner); t.assignees = p ? [p.github] : []; }
@@ -80,7 +104,7 @@
       if (t.linked_pr && repo && !t.links.some(l => /\/pull\/\d+/.test(l.url))) t.links.push({ title: 'PR #' + t.linked_pr, url: `https://github.com/${repo}/pull/${t.linked_pr}` });
       delete t.linked_issue; delete t.linked_pr;
     });
-    return n;
+    return assignNums(n);
   }
 
   async function gh(method, body, cond) {
@@ -211,13 +235,13 @@
     if (busy) { setStatus('Busy, try again', 'err'); return; }
     busy = true; const before = clone(state), base = baseState || before; let resolved = false;
     try {
-      const o = clone(state); fn(o); state = o; render(); // optimistic
+      const o = clone(state); fn(o); assignNums(o); state = o; render(); // optimistic
       for (let i = 0; i < 4; i++) {
         const res = await gh('GET');
         if (!res.ok && res.status !== 404) { setStatus(`GitHub error ${res.status}`, 'err'); state = before; render(); return; }
         let latest = DEFAULT();
         if (res.ok) { const d = await res.json(); sha = d.sha; latest = normalise(JSON.parse(b64d(d.content))); } else sha = null;
-        const pre = clone(latest); fn(latest);
+        const pre = clone(latest); fn(latest); assignNums(latest);
         if (!resolved) {
           const gone = deletedUnderMe(base, pre, targetIds);
           const conflicts = findConflicts(base, pre, latest);
@@ -371,10 +395,12 @@
   function initSeen() { if (loadSeen()) return; seenMap = {}; state.tasks.forEach(t => { seenMap[t.id] = stampsOf(t); }); saveSeen(); }   // only after a successful load
   function markSeen(id) { const t = state.tasks.find(x => x.id === id), m = loadSeen(); if (!t || !m) return; const s = stampsOf(t), o = m[id]; if (o && o.c === s.c && o.h === s.h) return; m[id] = s; saveSeen(); }
   function markAllSeen() { const m = loadSeen() || (seenMap = {}); state.tasks.forEach(t => { m[t.id] = stampsOf(t); }); saveSeen(); }
+  const mentionsMe = text => { const me = (cfg().me || '').replace(/[^\w-]/g, ''); return !!me && new RegExp('(?<![\\w@#&/])@' + me + '(?![\\w-])', 'i').test(String(text || '')); };
   function freshInfo(t) {
-    const me = (cfg().me || '').toLowerCase(), m = loadSeen(); if (!me || !m) return { unread: 0, changed: false };
+    const me = (cfg().me || '').toLowerCase(), m = loadSeen(); if (!me || !m) return { unread: 0, mention: false, changed: false };
     const s = m[t.id] || { c: '', h: '' }, other = x => String(x.by || '').toLowerCase() !== me;
-    return { unread: t.comments.filter(x => x.at > s.c && other(x)).length, changed: t.history.some(x => x.at > s.h && other(x)) };
+    const fresh = t.comments.filter(x => x.at > s.c && other(x));
+    return { unread: fresh.length, mention: fresh.some(x => mentionsMe(x.text)), changed: t.history.some(x => x.at > s.h && other(x)) };
   }
   const isFresh = t => { const f = freshInfo(t); return f.unread > 0 || f.changed; };
   const newBadge = n => el('span', 'newb', `${n} new`);
@@ -468,7 +494,7 @@
       `- Act for GitHub user @${who}:  export BOARD_USER=${who} BOARD_AGENT=<claude|codex> BOARD_SESSION=<short session id>`,
       '- Only work on tasks assigned to that user. Client material lives in clients/<client>/; keep confidential detail out of task cards. Do not contact anyone or share prices without the user approving.', '');
     if (t) {
-      L.push('YOUR TASK', `- id: ${t.id}`, `- title: ${t.title}`, `- column: ${t.column}   priority: ${t.priority || 'medium'}${t.due ? '   due: ' + t.due : ''}`);
+      L.push('YOUR TASK', `- number: #${t.num}   id: ${t.id}   (people refer to it as #${t.num}; board.py accepts either)`, `- title: ${t.title}`, `- column: ${t.column}   priority: ${t.priority || 'medium'}${t.due ? '   due: ' + t.due : ''}`);
       if (t.client) L.push(`- client: ${t.client}`);
       if (t.assignees.length) L.push(`- assigned to: ${t.assignees.map(a => '@' + a).join(', ')}`);
       if (t.labels.length) L.push(`- labels: ${t.labels.join(', ')}`);
@@ -570,7 +596,7 @@
     const sig = JSON.stringify(t.comments.map(m => m.id)) + t.comments.length; if (sig === cmSig) return; cmSig = sig;
     $('cmCount').textContent = t.comments.length ? `(${t.comments.length})` : ''; const box = $('cmStream'); box.textContent = '';
     t.comments.slice().reverse().forEach(cm => {      // newest first, like Trello: the composer is always at the top
-      const row = el('div', 'cmcard'), head = el('div', 'cmhead');
+      const row = el('div', 'cmcard' + (mentionsMe(cm.text) ? ' mine' : '')), head = el('div', 'cmhead');
       head.append(avatar(String(cm.by || '?').replace(/@.*/, '')), el('b', null, cm.by || '?'), el('time', null, ago2(cm.at)));
       head.lastChild.title = cm.at; const body = el('div', 'cmbody'); linkify(body, cm.text); row.append(head, body); box.append(row);
     });
@@ -615,6 +641,7 @@
   const firstLine = t => (t.details || '').split('\n').find(x => x.trim()) || '';
   function chipTodo(t) { const tc = todoCount(t); if (!tc.all) return null; const b = el('button', 'chip todochip' + (tc.done === tc.all ? ' full' : ''), `☑ ${tc.done}/${tc.all}`); b.title = 'Show or hide the checklist'; b.onclick = () => { openLists.has(t.id) ? openLists.delete(t.id) : openLists.add(t.id); render(); }; return b; }
   function chipComments(t) { const n = t.comments.length; if (!n) return null; const fr = freshInfo(t); const b = el('button', 'chip cmchip has' + (fr.unread ? ' unread' : ''), `💬 ${n}`); if (fr.unread) b.append(newBadge(fr.unread)); b.title = `${n} comment${n > 1 ? 's' : ''}`; b.onclick = () => openCard(t.id, 'comments'); return b; }
+  function chipMention(t) { return freshInfo(t).mention ? el('span', 'chip mentionchip', '@ you') : null; }
   function chipAgent(t) { if (!t.claim) return null; const st = claimState(t.claim); return el('span', 'chip agentchip ' + st, `🤖 ${t.claim.agent} · ${st}`); }
   function chipsGh(t) { const out = []; t.links.forEach(l => { const g = ghLink(l.url); if (!g) return; const a = el('a', 'chip gh ' + g.kind, g.label); a.href = safeUrl(l.url); a.target = '_blank'; a.rel = 'noopener noreferrer'; out.push(a); }); return out; }
   const labelTags = (t, max) => { const out = []; t.labels.slice(0, max || 99).forEach(l => { const s = el('span', 'tag label', l); s.style.background = labelColor(l); out.push(s); }); if (max && t.labels.length > max) out.push(el('span', 'tag', '+' + (t.labels.length - max))); return out; };
@@ -624,12 +651,12 @@
     const circ = el('button', 'circ p-' + (t.priority || 'medium'), isDone ? '✓' : ''); circ.title = isDone ? 'Reopen' : 'Mark done'; circ.setAttribute('aria-label', circ.title);
     circ.onclick = e => { e.stopPropagation(); toggleDone(t); };
     const c0 = el('div', 'c-check'); c0.append(circ);
-    const task = el('div', 'c-task'), title = el('div', 'lt', t.title); title.onclick = () => openCard(t.id); if (freshInfo(t).changed) { const d = el('span', 'cdot'); d.title = 'Changed since you last looked'; title.prepend(d); } task.append(title);
+    const task = el('div', 'c-task'), title = el('div', 'lt'); title.append(el('span', 'numtag', '#' + t.num), document.createTextNode(t.title)); title.onclick = () => openCard(t.id); if (freshInfo(t).changed) { const d = el('span', 'cdot'); d.title = 'Changed since you last looked'; title.prepend(d); } task.append(title);
     const mm = el('div', 'lmeta m-only');      // phone layout: everything under the title
     if (t.due) mm.append(el('span', 'chip due' + dueState(t), '📅 ' + fmtDue(t.due)));
     if (t.priority) mm.append(el('span', 'pr ' + t.priority, cap(t.priority)));
     mm.append(...labelTags(t)); if (t.client) mm.append(el('span', 'tag client', t.client));
-    [chipTodo(t), chipComments(t), chipAgent(t), ...chipsGh(t)].forEach(x => x && mm.append(x));
+    [chipMention(t), chipTodo(t), chipComments(t), chipAgent(t), ...chipsGh(t)].forEach(x => x && mm.append(x));
     if (mm.childNodes.length) task.append(mm);
     if (openLists.has(t.id)) task.append(todoList(t, false));
     const desc = el('div', 'c-desc', firstLine(t)); desc.title = t.details || '';
@@ -751,6 +778,8 @@
     const a = el('span', 'av', name.slice(0, 2).toUpperCase()); a.style.setProperty('--h', h); a.title = '@' + login + (p && p.name ? ' (' + p.name + ')' : ''); return a;
   }
 
+  function numChip(t) { const b = el('button', 'numchip', '#' + t.num); b.type = 'button'; b.title = `Task #${t.num}: click to copy the reference`; b.setAttribute('aria-label', `Task number ${t.num}, copy`);
+    b.onclick = e => { e.stopPropagation(); copyText('#' + t.num, `Copied #${t.num}`); }; return b; }
   function cardEl(t, ci) {
     const c = el('div', 'card' + (t.priority ? ' p-' + t.priority : '')); c.draggable = true; paint(c, t);
     c.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', t.id); c.classList.add('dragging'); });
@@ -759,7 +788,7 @@
     c.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); dropOn(e, t.column, t.id); });
     c.addEventListener('dblclick', () => openCard(t.id));
     const fr = freshInfo(t);
-    const top = el('div', 'top'); if (fr.changed) { const d = el('span', 'cdot'); d.title = 'Changed since you last looked'; top.append(d); } if (t.priority) top.append(el('span', 'prio ' + t.priority, t.priority)); top.append(el('span', 'spacer'));
+    const top = el('div', 'top'); top.append(numChip(t)); if (fr.changed) { const d = el('span', 'cdot'); d.title = 'Changed since you last looked'; top.append(d); } if (t.priority) top.append(el('span', 'prio ' + t.priority, t.priority)); top.append(el('span', 'spacer'));
     const edit = el('button', 'ico', '✏️'), bot = el('button', 'ico', '🤖');
     edit.title = 'Edit task'; edit.setAttribute('aria-label', 'Edit task'); edit.onclick = () => openCard(t.id);
     bot.title = 'Copy instructions for an agent to work on this task'; bot.setAttribute('aria-label', 'Copy agent instructions for this task'); bot.onclick = () => copyText(agentPrompt(t), 'Task instructions copied for an agent');
@@ -771,7 +800,7 @@
     if (t.client) tags.append(el('span', 'tag client', t.client));
     if (tags.childNodes.length) c.append(tags);
     if (t.todos.length) { const { done, all } = todoCount(t), pr = el('div', 'prog'), bar = el('div', 'bar'), fill = el('i'); fill.style.width = Math.round(100 * done / all) + '%'; bar.append(fill); pr.append(bar); pr.classList.toggle('full', done === all); c.append(pr); }
-    const foot = el('div', 'foot');
+    const foot = el('div', 'foot'); { const mc = chipMention(t); if (mc) foot.append(mc); }
     { const tc = todoCount(t), chip = el('button', 'chip todochip' + (tc.all && tc.done === tc.all ? ' full' : ''), tc.all ? `☑ ${tc.done}/${tc.all}` : '☑ +');
       chip.title = tc.all ? 'Show or hide the checklist' : 'Add a checklist'; chip.setAttribute('aria-expanded', String(openLists.has(t.id)));
       chip.onclick = () => { openLists.has(t.id) ? openLists.delete(t.id) : openLists.add(t.id); render(); }; foot.append(chip); }
@@ -938,6 +967,7 @@
   $('cRelease').onclick = () => { if (!confirm('Release the agent claim? The agent session may still be running.')) return; edit(editing, t => { t.claim = null; }, `Release claim: ${titleOf(editing)}`); };
 
   function fillDrawer(t, force) {
+    { const nb = $('dNum'); nb.textContent = '#' + t.num + '  ⧉'; nb.title = `Task #${t.num}: click to copy the reference`; nb.onclick = () => copyText('#' + t.num, `Copied #${t.num}`); }
     const set = (x, v) => { if ((force || document.activeElement !== x) && x.value !== v) x.value = v; };
     const cl = [...new Set([...state.clients, t.client].filter(Boolean))];
     if (force || $('cClient').options.length !== cl.length + 2) fillSelect($('cClient'), [['', '(none)'], ...cl.map(c => [c, c]), ['__new', '＋ New client…']]);
@@ -983,6 +1013,37 @@
       if (!confirm(`Import settings${o.repo ? ' for ' + o.repo : ''}${o.token ? ' including the token' : ''}? This replaces this browser's settings.`)) return;
       applyCode(m ? 'kbcfg1.' + m[1] : v); location.reload();
     } catch (e) { toast(e.message); } };
+  // ---- @ and # suggestions in comment/description boxes -----------------------------------------------------
+  function attachSuggest(ta) {
+    const host = ta.parentElement; host.classList.add('sugwrap');
+    const pop = el('div', 'suggest'); pop.hidden = true; pop.setAttribute('role', 'listbox'); host.append(pop);
+    let items = [], idx = 0, tok = null;
+    const close = () => { pop.hidden = true; items = []; tok = null; };
+    const token = () => { const v = ta.value.slice(0, ta.selectionStart), m = /(?:^|[\s(])([@#])([\w-]*)$/.exec(v); return m ? { ch: m[1], q: m[2], start: ta.selectionStart - m[2].length - 1 } : null; };
+    const pick = i => { const it = items[i]; if (!it || !tok) return; const end = ta.selectionStart, ins = it.insert + ' ';
+      ta.value = ta.value.slice(0, tok.start) + ins + ta.value.slice(end); const p = tok.start + ins.length; ta.setSelectionRange(p, p); close(); ta.dispatchEvent(new Event('input')); ta.focus(); };
+    const draw = () => { pop.style.top = (ta.offsetTop + ta.offsetHeight + 2) + 'px'; pop.textContent = ''; items.forEach((it, i) => { const b = el('button', 'sug' + (i === idx ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'option');
+        b.append(...it.parts); b.onmousedown = e => { e.preventDefault(); pick(i); }; pop.append(b); }); pop.hidden = !items.length; };
+    const refresh = () => {
+      tok = token(); if (!tok) { close(); return; }
+      const q = tok.q.toLowerCase();
+      if (tok.ch === '@') items = [...state.people.map(p => ({ id: p.github, name: p.name || '', kind: '' })), ...state.agents.map(a => ({ id: a, name: 'agent', kind: '🤖 ' }))]
+        .filter(p => p.id.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)).slice(0, 6).map(p => ({ insert: '@' + p.id, parts: [el('b', null, p.kind + '@' + p.id), el('span', 'sm', p.name)] }));
+      else items = state.tasks.filter(t => !q || String(t.num).startsWith(q) || t.title.toLowerCase().includes(q)).sort((a, b) => b.num - a.num).slice(0, 6)
+        .map(t => ({ insert: '#' + t.num, parts: [el('b', null, '#' + t.num), el('span', 'sm', t.title)] }));
+      idx = 0; draw();
+    };
+    ta.addEventListener('input', refresh); ta.addEventListener('click', refresh); ta.addEventListener('blur', () => setTimeout(close, 120));
+    ta.addEventListener('keydown', e => {
+      if (pop.hidden || !items.length) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); idx = (idx + 1) % items.length; draw(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); idx = (idx - 1 + items.length) % items.length; draw(); }
+      else if ((e.key === 'Enter' && !e.ctrlKey && !e.metaKey) || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); pick(idx); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+    }, true);
+  }
+  attachSuggest($('cmText')); attachSuggest($('cDetails'));
+
   // ---- settings ---------------------------------------------------------------
   function settingsTab(name) {
     ['general', 'conn'].forEach(n => { const on = n === name; $(n === 'general' ? 'panelGeneral' : 'panelConn').hidden = !on; $(n === 'general' ? 'tabGeneral' : 'tabConn').setAttribute('aria-selected', String(on)); });
