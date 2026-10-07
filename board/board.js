@@ -482,8 +482,8 @@
     return { c, repoUrl, skill: `${rawBase}/.claude/skills/board/SKILL.md`, agents: `${rawBase}/AGENTS.md`,
       web: `${location.origin}${location.pathname}?repo=${c.repo}&branch=${c.branch}&path=${c.path}` };
   }
-  function agentPrompt(t) {
-    const { c, repoUrl, skill, agents, web } = boardInfo(), who = c.me || '<your-github-username>';
+  function agentPrompt(t, agent) {   // agent: 'codex' when the card asks Codex for something; otherwise any agent
+    const { c, repoUrl, skill, agents, web } = boardInfo(), who = c.me || '<your-github-username>', ag = agent || '<claude|codex>';
     const L = [];
     L.push('You are working from the Rain Ventures team task board.', '',
       `Board repo: ${repoUrl}  (task data: ${c.path} on branch ${c.branch})`, `Web board: ${web}`,
@@ -491,7 +491,7 @@
       'How the board works:',
       `- Clone the repo if you have not (gh repo clone ${c.repo}) and run everything from its root. Never edit ${c.path} by hand; use python3 board/board.py so edits merge safely with other people and agents.`,
       '- Auth: `gh` logged in, or set BOARD_TOKEN to a fine-grained token (Contents: read/write on the repo).',
-      `- Act for GitHub user @${who}:  export BOARD_USER=${who} BOARD_AGENT=<claude|codex> BOARD_SESSION=<short session id>`,
+      `- Act for GitHub user @${who}:  export BOARD_USER=${who} BOARD_AGENT=${ag} BOARD_SESSION=<short session id>`,
       '- Only work on tasks assigned to that user. Client material lives in clients/<client>/; keep confidential detail out of task cards. Do not contact anyone or share prices without the user approving.', '');
     if (t) {
       L.push('YOUR TASK', `- number: #${t.num}   id: ${t.id}   (people refer to it as #${t.num}; board.py accepts either)`, `- title: ${t.title}`, `- column: ${t.column}   priority: ${t.priority || 'medium'}${t.due ? '   due: ' + t.due : ''}`);
@@ -504,6 +504,7 @@
       if (t.links.length) L.push('- links:', ...t.links.map(l => `    ${l.title}: ${l.url}`));
       if (t.contacts.length) L.push('- contacts:', ...t.contacts.map(k => `    ${[k.name, k.role, k.email, k.phone].filter(Boolean).join(' | ')}`));
       if (t.claim) L.push(`- NOTE: already claimed by ${t.claim.agent} (session ${t.claim.session_id || '?'}, ${claimState(t.claim)}). Do not take it over unless the user says so.`);
+      if (agent === 'codex') L.push('', `You are Codex, asked by @${who}. Do what the newest comment mentioning @codex asks, and nothing beyond it. Pass --agent codex when you claim.`);
       L.push('', 'Do this, in order:',
         `1. python3 board/board.py show ${t.id}   (re-read the latest card first)`,
         `2. python3 board/board.py claim ${t.id} --note "starting: <one-line plan>"`,
@@ -619,6 +620,8 @@
       if (send) t.claim = { agent: 'claude', on_behalf_of: who, session_id: 'pending-' + Date.now().toString(36), session_url: '', host: 'cron-job.org relay', status: 'running', note: `Sent to Claude by @${who}; waiting for the routine to start (about 1 to 2 minutes)`, claimed_at: nowIso(), heartbeat_at: nowIso() };
       stamp(t); }, `Comment: ${titleOf(id)}`, [id]);
     $('cmPost').disabled = false;
+    { const t2 = state.tasks.find(x => x.id === id); if (t2) syncAgentBtn(t2);
+      if (mentionsCodex(text) && myAgents().includes('codex')) toast('Codex can’t be started from the board. Press 🤖 Copy for Codex at the top of the card, then paste it into Codex.'); }
     if (send && (state.tasks.find(x => x.id === id) || { comments: [] }).comments.length > n0) {
       const t1 = state.tasks.find(x => x.id === id);
       try { const j = await sendToClaude(t1, who, cid); toast('Sent to Claude. It should start within about two minutes.'); watchClaudeJob(j.jobId, id, who); }
@@ -994,7 +997,7 @@
     $('cPrio').dataset.v = $('cPrio').value; $('cDueClear').hidden = !$('cDue').value;
     const ti = $('cTitle'); if (force || (document.activeElement !== ti && ti.value !== t.title)) { ti.value = t.title; fieldBase.title = t.title; } autosize(ti);
     if (!editingDesc) { fieldBase.details = t.details || ''; renderDescView(t); }
-    renderPeople(t); renderLabelChips(t); renderLinkList(t); renderContactList(t); renderClaim(t); renderDlgTodos(force); renderComments(); renderDlgHistory(t); syncSections(t); syncIssueBtn(t);
+    renderPeople(t); renderLabelChips(t); renderLinkList(t); renderContactList(t); renderClaim(t); renderDlgTodos(force); renderComments(); renderDlgHistory(t); syncSections(t); syncIssueBtn(t); syncAgentBtn(t);
   }
   // Checklist / Links / Contacts show only when they hold something (or were just opened from the add bar)
   const openSecs = new Set();
@@ -1031,6 +1034,15 @@
   $('cClose').onclick = () => { if (hashNum() !== null) setHash(''); $('dlgCard').close(); };
   // ---- GitHub issue from a card: creates an issue that carries the task and tells automation how to report back ----
   const issueLinkOf = t => { const r = new RegExp('^https://github\\.com/' + cfg().repo.replace(/[.]/g, '\\.') + '/issues/(\\d+)$', 'i'); for (const l of t.links) { const m = r.exec(l.url); if (m) return { url: l.url, n: m[1] }; } return null; };
+  // Codex can't be started from the board, so when a card's newest @codex request is unanswered the Copy button turns into "Copy for Codex"
+  const mentionsCodex = text => /(^|[\s(])@codex\b/i.test(String(text || ''));
+  function codexWanted(t) {
+    if (!t || !myAgents().includes('codex') || (t.claim && t.claim.agent === 'codex' && claimState(t.claim) === 'running')) return false;
+    for (let i = t.comments.length - 1; i >= 0; i--) { const m = t.comments[i]; if (/codex/i.test(m.by || '')) return false; if (mentionsCodex(m.text)) return true; }
+    return false;
+  }
+  function syncAgentBtn(t) { const b = $('cAgent'), on = codexWanted(t); b.classList.toggle('hot', on); b.querySelector('.atxt').textContent = on ? ' Copy for Codex' : ' Copy for agent';
+    b.title = on ? 'Codex was asked on this card. Copy its instructions, then paste them into Codex (the board cannot start Codex by itself)' : 'Copy instructions for an AI agent to work on this task: the card, how to claim it, and the skill link'; }
   function syncIssueBtn(t) { const b = $('cIssue'), il = issueLinkOf(t); b.hidden = false; b.querySelector('.atxt').textContent = il ? ` Issue #${il.n}` : ' Create issue'; b.title = il ? 'Open the linked GitHub issue' : 'Create a GitHub issue for this task (so Claude or a teammate can work it from GitHub)'; }
   function issueBody(t) {
     const { c, skill, agents, web } = boardInfo(), L = [], ref = '#' + t.num;
@@ -1062,7 +1074,7 @@
       toast(`Created issue #${iss.number}`);
     } catch (e) { toast('Could not reach GitHub', true); } finally { b.disabled = false; const t2 = taskNow(); if (t2) syncIssueBtn(t2); }
   };
-  $('cAgent').onclick = () => { const t = taskNow(); if (t) copyText(agentPrompt(t), 'Task instructions copied for an agent'); };
+  $('cAgent').onclick = () => { const t = taskNow(); if (!t) return; const cx = codexWanted(t); copyText(agentPrompt(t, cx ? 'codex' : undefined), cx ? 'Copied for Codex. Paste it into Codex.' : 'Task instructions copied for an agent'); };
   $('dlgCard').addEventListener('close', () => { if (hashNum() !== null) setHash(''); commitTitle(); closeDesc(true); commentsFor = null; });   // closing never loses typed text
   $('cDelete').onclick = () => { const id = editing; if (!confirm(`Delete "${titleOf(id)}"?`)) return; const title = titleOf(id); editingDesc = false; $('dlgCard').close(); mutate(n => { n.tasks = n.tasks.filter(x => x.id !== id); }, `Delete task: ${title}`, [id]); };
 

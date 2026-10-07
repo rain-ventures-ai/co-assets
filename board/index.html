@@ -104,7 +104,7 @@
     </div>
     <div id="boxCodex" class="agentbox" hidden>
     <h4>Codex</h4>
-    <p class="hint">Typing <b>@codex</b> mentions Codex on the card. It does not start Codex on its own: OpenAI only lets Codex in the cloud be started from an <b>@codex</b> comment on a GitHub pull request, and offers no trigger the board can call. To have Codex work a task, open the card and use <b>🤖 Copy for agent</b>, then paste it into Codex (it claims and reports through board.py), or use <b>🐙 Create issue</b>.</p>
+    <p class="hint"><b>How @codex works:</b> the board cannot start Codex by itself (OpenAI only starts Codex cloud tasks from an @codex comment on a GitHub pull request). So when a card's newest request is for <b>@codex</b>, the button at the top of the card turns into <b>🤖 Copy for Codex</b>. Press it and paste into Codex; Codex then claims the card and reports back with board.py. <b>@claude</b> is different: it starts your Claude routine straight away.</p>
     </div>
     <div id="sClaudeMsg" class="hint" role="status"></div>
     <div class="actions"><span class="spacer"></span><button id="sClaudeSave" type="button" class="primary">Save</button></div>
