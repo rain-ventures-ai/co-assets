@@ -10,6 +10,7 @@
 <body>
 <header>
   <div class="logo" title="Team Board" aria-label="Team Board">▦</div>
+  <select id="boardSw" hidden aria-label="Board" title="Switch board"></select>
   <div id="viewSw" class="seg" role="group" aria-label="View"><button data-view="board" title="Board"><span class="vi">▦</span><span class="vt"> Board</span></button><button data-view="list" title="List"><span class="vi">☰</span><span class="vt"> List</span></button><button data-view="cal" title="Calendar"><span class="vi">📅</span><span class="vt"> Calendar</span></button><button data-view="sched" title="Schedule"><span class="vi">🗓</span><span class="vt"> Schedule</span></button></div>
   <div class="clientwrap">
     <div id="clientBar" class="clientbar" role="group" aria-label="Filter by client"></div>
@@ -36,6 +37,7 @@
   <button id="btnRefresh" title="Reload from GitHub" aria-label="Refresh"><span class="ic">🔄</span><span class="tx"> Refresh</span></button>
   <button id="btnSettings" aria-label="Settings" title="Settings"><span class="ic">⚙️</span><span class="tx"> Settings</span></button>
 </header>
+<div id="kitBar" class="kitbar" role="status" hidden></div>
 <div id="legend" class="legend" aria-label="Colour key"></div>
 <nav id="tabs" aria-label="Columns"></nav>
 <div id="board"></div>

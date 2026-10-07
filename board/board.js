@@ -9,19 +9,33 @@
     repo: LS.get('kb_repo', ''), branch: LS.get('kb_branch', 'master'), path: LS.get('kb_path', 'board/tasks.json'),
     token: LS.get('kb_token'), me: LS.get('kb_me', ''), api: LS.get('kb_api', 'https://api.github.com') // api override is for local testing only
   });
-  // Optional first-run prefill from the link: ?repo=owner/name&branch=main&path=tasks.json (never the token)
-  (() => { const q = new URLSearchParams(location.search);
-    ['repo', 'branch', 'path'].forEach(k => { const v = q.get(k); if (!v || LS.get('kb_' + k)) return;
-      if (k === 'repo' ? /^[\w.-]+\/[\w.-]+$/.test(v) : /^[\w./-]+$/.test(v)) LS.set('kb_' + k, v); }); })();
+  // ---- several boards: each repo keeps its own branch, path, token and Claude routine in kb_boards (this browser only) ----
+  const BOARD_KEYS = ['branch', 'path', 'token', 'claude_url', 'claude_token'], REPO_RE = /^[\w.-]+\/[\w.-]+$/;
+  const boardsMap = () => { try { const o = JSON.parse(LS.get('kb_boards', '{}')); return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; } catch { return {}; } };
+  function stashBoard() { const repo = LS.get('kb_repo'); if (!repo) return; const m = boardsMap(), e = {};
+    BOARD_KEYS.forEach(k => { const v = LS.get('kb_' + k); if (v) e[k] = v; }); m[repo] = e; LS.set('kb_boards', JSON.stringify(m)); }
+  function activateBoard(repo, over = {}) { // keep the current board's values, then load the saved ones for repo (never carry a token across)
+    stashBoard(); const e = Object.assign({}, boardsMap()[repo] || {}, over); LS.set('kb_repo', repo);
+    BOARD_KEYS.forEach(k => { if (e[k]) LS.set('kb_' + k, e[k]); else LS.del('kb_' + k); }); stashBoard(); }
+  const boardUrl = () => `${location.pathname}?repo=${LS.get('kb_repo')}&branch=${LS.get('kb_branch', 'master')}&path=${LS.get('kb_path', 'board/tasks.json')}`;
+  function forgetBoard(repo) { const m = boardsMap(); delete m[repo]; LS.set('kb_boards', JSON.stringify(m)); }
+  // The link picks the board: ?repo=owner/name&branch=main&path=tasks.json (never the token). A different repo switches to it.
+  (() => { const q = new URLSearchParams(location.search), repo = q.get('repo'), over = {};
+    ['branch', 'path'].forEach(k => { const v = q.get(k); if (v && /^[\w./-]+$/.test(v)) over[k] = v; });
+    const cur = LS.get('kb_repo');
+    if (repo && REPO_RE.test(repo) && cur && repo !== cur) activateBoard(repo, boardsMap()[repo] ? {} : over);
+    else { if (repo && REPO_RE.test(repo) && !cur) LS.set('kb_repo', repo); Object.keys(over).forEach(k => { if (!LS.get('kb_' + k)) LS.set('kb_' + k, over[k]); }); }
+    stashBoard(); })();
   // ---- move settings between browsers/devices: one pasteable code or a setup link (token included) --------------
-  const XFER = { text: ['repo', 'branch', 'path', 'me', 'token', 'collapsed', 'undated', 'tab', 'claude_url', 'claude_token', 'cron_key', 'agents'], pick: { theme: ['auto', 'light', 'dark', 'midnight', 'sand'], style: ['classic', 'colorful'], view: ['board', 'list', 'cal', 'sched'] } };
+  const XFER = { text: ['repo', 'branch', 'path', 'me', 'token', 'collapsed', 'undated', 'tab', 'claude_url', 'claude_token', 'cron_key', 'agents', 'boards'], pick: { theme: ['auto', 'light', 'dark', 'midnight', 'sand'], style: ['classic', 'colorful'], view: ['board', 'list', 'cal', 'sched'] } };
   const xEnc = o => { const b = new TextEncoder().encode(JSON.stringify(o)); let s = ''; b.forEach(c => s += String.fromCharCode(c)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
   const xDec = t => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))));
   function exportCode() { const o = {}; XFER.text.concat(Object.keys(XFER.pick)).forEach(k => { const v = LS.get('kb_' + k, null); if (v !== null && v !== '') o[k] = v; }); return 'kbcfg1.' + xEnc(o); }
   function parseCode(raw) {
     const m = /kbcfg1\.([A-Za-z0-9_-]+)/.exec(String(raw || '')); if (!m) throw new Error('That is not a board settings code.');
     const o = xDec(m[1]), out = {};
-    XFER.text.forEach(k => { if (typeof o[k] === 'string' && o[k].length < 600) out[k] = o[k]; });
+    XFER.text.forEach(k => { if (typeof o[k] === 'string' && o[k].length < (k === 'boards' ? 20000 : 600)) out[k] = o[k]; });
+    if (out.boards) { try { const b = JSON.parse(out.boards); if (!b || typeof b !== 'object' || Array.isArray(b) || !Object.keys(b).every(r => REPO_RE.test(r))) delete out.boards; } catch { delete out.boards; } }
     Object.keys(XFER.pick).forEach(k => { if (XFER.pick[k].includes(o[k])) out[k] = o[k]; });
     if (out.repo && !/^[\w.-]+\/[\w.-]+$/.test(out.repo)) delete out.repo;
     if (out.branch && !/^[\w./-]+$/.test(out.branch)) delete out.branch;
@@ -43,6 +57,8 @@
   });
 
   let state = DEFAULT(), sha = null, etag = null, busy = false, lastSyncOk = false;
+  const KNOWN_SCHEMA = 2;   // tasks.json version this page understands; a newer file is shown read-only (see board/UPGRADING.md)
+  let newerSchema = 0;
   const $ = id => document.getElementById(id);
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const b64e = s => { const b = new TextEncoder().encode(s); let r = ''; b.forEach(x => r += String.fromCharCode(x)); return btoa(r); };
@@ -124,9 +140,46 @@
       if (res.status === 404) { await diagnose404(); return false; }
       if (res.status === 401 || res.status === 403) { setStatus('Token rejected or lacks access', 'err'); return false; }
       if (!res.ok) { setStatus(`GitHub error ${res.status}`, 'err'); return false; }
-      const data = await res.json(); sha = data.sha; etag = res.headers.get('ETag'); state = normalise(JSON.parse(b64d(data.content))); lastSyncOk = true; initSeen(); setTimeout(openFromHash, 30);
+      const data = await res.json(); sha = data.sha; etag = res.headers.get('ETag'); const raw = JSON.parse(b64d(data.content));
+      newerSchema = Number.isInteger(raw.version) && raw.version > KNOWN_SCHEMA ? raw.version : 0; state = normalise(raw); checkKit(); lastSyncOk = true; initSeen(); setTimeout(openFromHash, 30);
       setStatus('Synced ' + new Date().toLocaleTimeString(), 'ok'); render(); return true;
     } catch (e) { console.error(e); setStatus('Network or parse error', 'err'); return false; }
+  }
+
+  // ---- board kit: is this repo's copy of the shared tools older than the kit published with this page? ----
+  let kitChecked = '';
+  async function checkKit() {
+    const c = cfg(), key = c.repo + '@' + c.branch, bar = $('kitBar'); if (!bar) return;
+    if (newerSchema) { bar.hidden = false; bar.dataset.schema = '1'; bar.textContent = `This board was saved by newer board tools (schema v${newerSchema}). It is read-only here until this page updates.`; return; }
+    if (bar.dataset.schema) { delete bar.dataset.schema; bar.hidden = true; kitChecked = ''; }
+    if (kitChecked === key) return; kitChecked = key;
+    try {
+      const want = (await (await fetch('kit/manifest.json', { cache: 'no-store' })).json()).version;
+      const dir = c.path.includes('/') ? c.path.slice(0, c.path.lastIndexOf('/') + 1) : '';
+      const r = await fetch(`${c.api}/repos/${c.repo}/contents/${dir}KIT_VERSION?ref=${encodeURIComponent(c.branch)}`, { cache: 'no-store', headers: { Authorization: `Bearer ${c.token}`, Accept: 'application/vnd.github.raw+json' } });
+      const have = r.ok ? parseInt(await r.text(), 10) || 0 : 0; if (!r.ok && r.status !== 404) return;
+      renderKitBar(have, want);
+    } catch { /* offline or no kit published: say nothing */ }
+  }
+  const kitOwner = () => (state.settings && state.settings.kit_owner) || ((state.people[0] || {}).github || '');
+  function renderKitBar(have, want) {
+    const bar = $('kitBar'); bar.textContent = ''; bar.hidden = !(want > have); if (bar.hidden) return;
+    const owner = kitOwner(), title = `Upgrade board tools to kit v${want}`, card = state.tasks.find(t => t.title === title && t.column !== 'done');
+    bar.append(el('span', null, `Board tools are out of date (this repo v${have}, latest v${want}). `));
+    if (card) { const b = el('button', 'small', `Open #${card.num}`); b.onclick = () => openCard(card.id, 'comments'); bar.append(el('span', null, `Upgrade card #${card.num} is with @${owner}. `), b); return; }
+    if (!owner || (me() || '').toLowerCase() !== owner.toLowerCase()) { bar.append(el('span', null, `The upgrade owner is @${owner || '?'}.`)); return; }
+    const b = el('button', 'small primary', 'Make the upgrade card');
+    b.onclick = async () => {
+      const id = uid(), raw = 'https://github.com/rain-ventures-ai/co-assets/blob/master/board/kit/UPGRADING.md';
+      await mutate(n => { if (n.tasks.some(t => t.title === title && t.column !== 'done')) return;
+        n.tasks.push({ id, title, column: 'todo', client: '', priority: 'medium', due: '', labels: n.labels.some(l => l.name === 'board') ? ['board'] : [], assignees: [owner],
+          details: `This repo's board tools are kit v${have}; the published kit is v${want}.\n\nComment \`@claude upgrade the board kit\` to start your routine. It follows .claude/skills/board-upgrade/SKILL.md (or board/UPGRADING.md in the kit): it copies the kit on a branch, runs the migrations, keeps this repo's own files, checks the board and opens a pull request for you to merge.`,
+          links: [{ title: 'Upgrade notes', url: raw }], contacts: [], todos: ['Read UPGRADING.md for each version', 'kit-update on a branch', 'migrate', 'Check repo-specific files', 'Checks pass', 'Open and link the PR'].map(text => ({ id: todoId(), text, done: false })),
+          comments: [], history: [], claim: null, created: nowIso(), updated: nowIso(), createdBy: me(), updatedBy: me() }); }, title);
+      renderKitBar(have, want); const t = state.tasks.find(x => x.id === id);
+      if (t) { openCard(id, 'comments'); $('cmText').value = '@claude upgrade the board kit'; autosize($('cmText')); }
+    };
+    bar.append(el('span', null, 'You are the upgrade owner. '), b);
   }
 
   // GitHub answers 404 both for a missing file and for a repo your token cannot see, so check which.
@@ -155,6 +208,7 @@
   }
 
   async function save(next, message) {
+    if (newerSchema) { toast(`Not saved: this board uses newer board tools (schema v${newerSchema}). Reload the page; if it stays, the board kit needs an upgrade.`, true); return 'error:schema'; }
     const body = { message, content: b64e(JSON.stringify(next, null, 2) + '\n'), branch: cfg().branch }; if (sha) body.sha = sha;
     const res = await gh('PUT', body);
     if (res.ok) { sha = (await res.json()).content.sha; etag = null; state = next; return 'ok'; }
@@ -240,7 +294,9 @@
         const res = await gh('GET');
         if (!res.ok && res.status !== 404) { setStatus(`GitHub error ${res.status}`, 'err'); state = before; render(); return; }
         let latest = DEFAULT();
-        if (res.ok) { const d = await res.json(); sha = d.sha; latest = normalise(JSON.parse(b64d(d.content))); } else sha = null;
+        if (res.ok) { const d = await res.json(), rawL = JSON.parse(b64d(d.content)); sha = d.sha;
+          if (Number.isInteger(rawL.version) && rawL.version > KNOWN_SCHEMA) { newerSchema = rawL.version; state = before; render(); checkKit(); setStatus('Not saved: board saved by newer tools', 'err'); return; }
+          latest = normalise(rawL); } else sha = null;
         const pre = clone(latest); fn(latest); assignNums(latest);
         if (!resolved) {
           const gone = deletedUnderMe(base, pre, targetIds);
@@ -1243,7 +1299,7 @@
   $('dlgSettings').addEventListener('close', () => document.querySelectorAll('[data-show]').forEach(b => { $(b.dataset.show).type = 'password'; b.textContent = '👁 Show'; b.setAttribute('aria-pressed', 'false'); }));
   $('sClaudePrompt').onclick = () => {
     const c = cfg(), base = `https://github.com/${c.repo}/blob/${c.branch}`, who = c.me || '<your-github-username>';
-    copyText([`Please set up my Claude routine for the Rain Ventures team board, so that typing @claude in a task comment starts it.`, '',
+    copyText([`Please set up my Claude routine for the task board in ${c.repo}, so that typing @claude in a task comment starts it.`, '',
       `My GitHub username is ${who}. The board repo is ${c.repo}.`, 'Read these first:',
       `- ${base}/board/ROUTINE-SETUP.md (the runbook)`, `- ${base}/board/routine-loader.txt (the short prompt to paste into the routine; it points at routine-prompt.md in the repo)`, `- ${base}/.claude/skills/board-routine-setup/SKILL.md (what you may and may not do)`, '',
       'Then ask me which mode I want:', 'A) Guide me: walk me through each step in order and check each one.',
@@ -1256,6 +1312,7 @@
     if (u && !FIRE_RE.test(u)) { m.textContent = 'The routine URL should look like https://api.anthropic.com/v1/claude_code/routines/trig_…/fire'; m.className = 'hint bad'; return; }
     LS.set('kb_claude_url', u); LS.set('kb_claude_token', t); LS.set('kb_cron_key', k);
     LS.set('kb_agents', KNOWN_AGENTS.filter(a => $(a === 'claude' ? 'sUseClaude' : 'sUseCodex').checked).join(','));
+    stashBoard();
     m.textContent = 'Saved in this browser.'; m.className = 'hint ok'; toast('Agent settings saved');
   };
   $('sClaudeTest').onclick = async () => {
@@ -1287,9 +1344,23 @@
   $('sCancel').onclick = () => $('dlgSettings').close();
   $('sForget').onclick = () => { LS.del('kb_token'); $('dlgSettings').close(); state = DEFAULT(); sha = null; lastSyncOk = false; render(); setStatus('Token removed'); };
   $('sSave').onclick = () => {
-    LS.set('kb_repo', $('sRepo').value.trim()); LS.set('kb_branch', $('sBranch').value.trim() || 'master'); LS.set('kb_path', $('sPath').value.trim() || 'board/tasks.json'); LS.set('kb_me', $('sMe').value.trim().replace(/^@/, ''));
-    if ($('sToken').value.trim()) LS.set('kb_token', $('sToken').value.trim()); $('dlgSettings').close(); load();
+    const nr = $('sRepo').value.trim(), moved = nr !== LS.get('kb_repo');
+    if (!REPO_RE.test(nr)) { toast('The repository must look like owner/name', true); return; }
+    if (moved) activateBoard(nr);   // another repo = another board, with its own token
+    LS.set('kb_branch', $('sBranch').value.trim() || 'master'); LS.set('kb_path', $('sPath').value.trim() || 'board/tasks.json'); LS.set('kb_me', $('sMe').value.trim().replace(/^@/, ''));
+    if ($('sToken').value.trim()) LS.set('kb_token', $('sToken').value.trim()); stashBoard(); $('dlgSettings').close();
+    if (moved) { location.replace(boardUrl()); return; } load();
   };
+  // header board switcher: shown once this browser knows two or more boards
+  (() => { const sw = $('boardSw'); if (!sw) return; const cur = LS.get('kb_repo'), repos = Object.keys(boardsMap()).sort();
+    sw.replaceChildren(...repos.map(r => { const o = document.createElement('option'); o.value = r; o.textContent = r; o.selected = r === cur; return o; }));
+    [['+add', '＋ Add a board…']].concat(repos.length > 1 ? [['-rm', '✕ Remove this board from the list']] : []).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sw.append(o); });
+    sw.hidden = !repos.length;   // always there once a board is set, so a second board can be added from it
+    sw.onchange = () => { const v = sw.value; sw.value = cur;
+      if (v === '+add') { $('btnSettings').click(); settingsTab('conn'); $('sRepo').value = ''; $('sToken').value = ''; $('sToken').placeholder = 'github_pat_... (a token for the new repo)'; return; }
+      if (v === '-rm') { const next = repos.find(r => r !== cur); if (!next || !confirm(`Remove ${cur} from the board list in this browser?\n\nIts saved token and routine settings are deleted here. The repo itself is not changed.`)) return;
+        activateBoard(next); forgetBoard(cur); location.replace(boardUrl()); return; }
+      activateBoard(v); location.replace(boardUrl()); }; })();
   document.querySelectorAll('#viewSw button').forEach(b => { b.onclick = () => setView(b.dataset.view); });
   $('btnUnread').onclick = () => { freshOnly = !freshOnly; render(); };
   $('sMarkAll').onclick = () => { markAllSeen(); render(); toast('All cards marked as read'); };
