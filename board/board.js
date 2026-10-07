@@ -806,6 +806,7 @@
     c.addEventListener('dragover', e => e.preventDefault());
     c.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); dropOn(e, t.column, t.id); });
     c.addEventListener('dblclick', () => openCard(t.id));
+    c.addEventListener('click', e => { if (window.matchMedia('(max-width: 760px)').matches && !e.target.closest('button, a, input, select, textarea')) openCard(t.id); });   // phones: tap a card to open it (and change its status there)
     const fr = freshInfo(t);
     const top = el('div', 'top'); top.append(numChip(t)); if (fr.changed) { const d = el('span', 'cdot'); d.title = 'Changed since you last looked'; top.append(d); } if (t.priority) top.append(el('span', 'prio ' + t.priority, t.priority)); top.append(el('span', 'spacer'));
     const edit = el('button', 'ico', '✏️'), bot = el('button', 'ico', '🤖');
@@ -840,11 +841,7 @@
       if (k.note) b.append(el('div', 'cnote', k.note));
       b.title = `session ${k.session_id || '?'} on ${k.host || '?'}\n${k.cwd || ''}\n${k.branch || ''}`; c.append(b);
     }
-    const cols = state.columns, prev = cols[ci - 1], next = cols[ci + 1];
-    const mv = el('div', 'moves'), left = el('button', 'mv', '◀ ' + (prev ? prev.name : '')), right = el('button', 'mv', (next ? next.name : '') + ' ▶');
-    left.title = 'Move left'; right.title = 'Move right'; left.disabled = !prev; right.disabled = !next;
-    left.onclick = () => moveTo(t.id, prev.id); right.onclick = () => moveTo(t.id, next.id);
-    mv.append(left, right); c.append(mv); return c;
+    return c;   // no move buttons (too easy to hit by accident): drag the card, or open it and change its status
   }
 
   function place(n, id, colId, beforeId) {
