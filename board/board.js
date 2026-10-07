@@ -1158,6 +1158,16 @@
   $('sendPost').onclick = () => sendResolve && sendResolve('post');
   $('sendNo').onclick = () => sendResolve && sendResolve('cancel');
   $('dlgSend').addEventListener('cancel', () => { sendResolve && sendResolve('cancel'); });   // Esc
+  $('sClaudePrompt').onclick = () => {
+    const c = cfg(), base = `https://github.com/${c.repo}/blob/${c.branch}`, who = c.me || '<your-github-username>';
+    copyText([`Please set up my Claude routine for the Rain Ventures team board, so that typing @claude in a task comment starts it.`, '',
+      `My GitHub username is ${who}. The board repo is ${c.repo}.`, 'Read these first:',
+      `- ${base}/board/ROUTINE-SETUP.md (the runbook)`, `- ${base}/board/routine-prompt.md (the exact routine prompt)`, `- ${base}/.claude/skills/board-routine-setup/SKILL.md (what you may and may not do)`, '',
+      'Then ask me which mode I want:', 'A) Guide me: walk me through each step in order and check each one.',
+      'B) Do it for me in my browser: if you have a browser tool (Claude in Chrome or the built-in browser), open claude.ai/code/routines, GitHub\'s fine-grained token page and console.cron-job.org (I am already signed in) and do the clicking and the non-secret fields: routine name, the prompt from routine-prompt.md, the repository, a dedicated environment with Trusted network access, no connectors, and the API trigger.', '',
+      'Rules: never type, paste, read back or store a secret (routine trigger token, BOARD_TOKEN, cron-job.org API key). At each secret step, stop, tell me exactly where to click and what to paste, and wait until I say it is done. Remove all connectors from the routine. Finish by running the verification checklist and the first test from the runbook and tell me what passed and failed.'].join('\n'),
+      'Setup prompt copied. Paste it into a new chat with Claude.');
+  };
   $('sClaudeSave').onclick = () => {
     const u = $('sClaudeUrl').value.trim(), t = $('sClaudeTok').value.trim(), k = $('sCronKey').value.trim(), m = $('sClaudeMsg');
     if (u && !FIRE_RE.test(u)) { m.textContent = 'The routine URL should look like https://api.anthropic.com/v1/claude_code/routines/trig_…/fire'; m.className = 'hint bad'; return; }
