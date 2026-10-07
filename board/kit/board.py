@@ -42,6 +42,7 @@ Board kit (shared tools, kept in one place and copied into each board repo):
   board.py kit-update [--from DIR]   # copy the published kit into this repo and set board/KIT_VERSION (does not commit)
   board.py migrate             # bring tasks.json up to the schema this board.py knows (safe to run twice)
   board.py kit-owner [USER]    # show or set whose Claude does kit upgrades on this board (settings.kit_owner)
+  board.py init --person osouthgate:Oliver [--person ...] [--client "General"]   # new board repo: kit files, AGENTS.md, CLAUDE.md, empty tasks.json
 """
 import argparse, base64, contextlib, datetime as dt, io, json, os, re, shutil, socket, subprocess, sys, tempfile, time, urllib.error, urllib.request, uuid
 
@@ -697,7 +698,9 @@ def cmd_kit_update(a):
             open(path, "wb").write(new); changed.append(dest)
     open(os.path.join(ROOT, "board", "KIT_VERSION"), "w").write(f"{m['version']}\n")
     print(f"board kit v{have} -> v{m['version']}; changed: " + (", ".join(changed) or "nothing"))
-    print("Next: read board/UPGRADING.md for every version after v%d, run board.py migrate, check this repo's own files, commit on a branch." % have)
+    if not getattr(a, "quiet", False):
+        print("Next: read board/UPGRADING.md for every version after v%d, check this repo's own files, commit on a branch "
+              "(the data migrates on the first write after the merge)." % have)
 
 
 def cmd_migrate(a):
@@ -719,6 +722,43 @@ def cmd_kit_owner(a):
             sys.exit(f"@{u} is not one of the board's people")
         data.setdefault("settings", {})["kit_owner"] = u; print(f"kit upgrades on this board go to @{u}")
     mutate(fn, f"Board kit owner: @{u}")
+
+
+def cmd_init(a):
+    """Set up a new board repo in this clone: the kit, the repo-owned starter files (only if missing) and an empty board."""
+    if not REPO:
+        sys.exit("run init inside a clone of the new board repo (its git remote names the repo)")
+    people = []
+    for x in a.person:
+        gh_user, _, name = x.lstrip("@").partition(":")
+        people.append({"github": gh_user, "name": name or gh_user})
+    a.quiet = True
+    cmd_kit_update(a)
+    fill = lambda t: t.replace("{repo}", REPO).replace("{people}", ", ".join("`" + p["github"] + "`" for p in people))
+    for dest, src in [("AGENTS.md", "templates/AGENTS.md"), ("CLAUDE.md", "templates/CLAUDE.md"),
+                      (".gitignore", "templates/gitignore"), (".claude/settings.json", "templates/settings.json")]:
+        path = os.path.join(ROOT, dest)
+        if os.path.exists(path):
+            print(f"kept existing {dest}"); continue
+        try:
+            text = fill(kit_fetch(src, a.source).decode())
+        except KitError as e:
+            sys.exit(f"init stopped: {e}")
+        os.makedirs(os.path.dirname(path) or ROOT, exist_ok=True); open(path, "w").write(text); print(f"wrote {dest}")
+    tj = os.path.join(ROOT, PATH)
+    if os.path.exists(tj):
+        print(f"kept existing {PATH}")
+    else:
+        data = {"version": SCHEMA, "settings": {"stale_after_minutes": 30, "kit_owner": people[0]["github"]},
+                "columns": [{"id": "backlog", "name": "Backlog"}, {"id": "todo", "name": "To do"},
+                            {"id": "in-progress", "name": "In progress"}, {"id": "done", "name": "Done"}],
+                "people": people, "agents": ["claude", "codex"], "clients": a.client or ["General"],
+                "labels": [{"name": "follow-up", "color": "#b38600"}, {"name": "decision", "color": "#e56910"},
+                           {"name": "admin", "color": "#6b778c"}, {"name": "board", "color": "#5e4db2"}],
+                "tasks": [], "next_num": 1}
+        os.makedirs(os.path.dirname(tj), exist_ok=True)
+        open(tj, "w").write(json.dumps(data, indent=2, ensure_ascii=False) + "\n"); print(f"wrote {PATH} (empty board, upgrade owner @{people[0]['github']})")
+    print("Next: commit and push to the default branch, then add the board in the web board: Settings → Boards → Add an existing board.")
 
 
 def main():
@@ -762,6 +802,8 @@ def main():
     s.set_defaults(f=cmd_kit_update)
     s = sub.add_parser("migrate"); s.set_defaults(f=cmd_migrate)
     s = sub.add_parser("kit-owner"); s.add_argument("user", nargs="?"); s.set_defaults(f=cmd_kit_owner)
+    s = sub.add_parser("init"); s.add_argument("--person", action="append", required=True, help="github-user:Display Name (repeatable; the first is the upgrade owner)")
+    s.add_argument("--client", action="append"); s.add_argument("--from", dest="source"); s.set_defaults(f=cmd_init)
     a = p.parse_args()
     FILE = a.file
     a.f(a)

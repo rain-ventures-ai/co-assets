@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/board/board.py\" auto-heartbeat",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}

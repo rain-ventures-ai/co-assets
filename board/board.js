@@ -1326,9 +1326,10 @@
 
   // ---- settings ---------------------------------------------------------------
   function settingsTab(name) {
-    const ids = { general: ['panelGeneral', 'tabGeneral'], conn: ['panelConn', 'tabConn'], claude: ['panelClaude', 'tabClaude'] };
+    const ids = { general: ['panelGeneral', 'tabGeneral'], conn: ['panelConn', 'tabConn'], claude: ['panelClaude', 'tabClaude'], boards: ['panelBoards', 'tabBoards'] };
     Object.keys(ids).forEach(n => { const on = n === name; $(ids[n][0]).hidden = !on; $(ids[n][1]).setAttribute('aria-selected', String(on)); });
     if (name === 'conn') setTimeout(() => $('sRepo').focus(), 30);
+    if (name === 'boards') renderBoards();
     if (name === 'claude') { $('sClaudeUrl').value = LS.get('kb_claude_url'); $('sClaudeTok').value = LS.get('kb_claude_token'); $('sCronKey').value = LS.get('kb_cron_key'); $('sClaudeMsg').textContent = '';
       const mine = myAgents(); $('sUseClaude').checked = mine.includes('claude'); $('sUseCodex').checked = mine.includes('codex'); showAgentBoxes(); }
   }
@@ -1351,16 +1352,30 @@
     if ($('sToken').value.trim()) LS.set('kb_token', $('sToken').value.trim()); stashBoard(); $('dlgSettings').close();
     if (moved) { location.replace(boardUrl()); return; } load();
   };
-  // header board switcher: shown once this browser knows two or more boards
-  (() => { const sw = $('boardSw'); if (!sw) return; const cur = LS.get('kb_repo'), repos = Object.keys(boardsMap()).sort();
+  // header board switcher: shown when this browser knows two or more boards
+  function renderSwitcher() { const sw = $('boardSw'); if (!sw) return; const cur = LS.get('kb_repo'), repos = Object.keys(boardsMap()).sort();
     sw.replaceChildren(...repos.map(r => { const o = document.createElement('option'); o.value = r; o.textContent = r; o.selected = r === cur; return o; }));
-    [['+add', '＋ Add a board…']].concat(repos.length > 1 ? [['-rm', '✕ Remove this board from the list']] : []).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sw.append(o); });
-    sw.hidden = !repos.length;   // always there once a board is set, so a second board can be added from it
-    sw.onchange = () => { const v = sw.value; sw.value = cur;
-      if (v === '+add') { $('btnSettings').click(); settingsTab('conn'); $('sRepo').value = ''; $('sToken').value = ''; $('sToken').placeholder = 'github_pat_... (a token for the new repo)'; return; }
-      if (v === '-rm') { const next = repos.find(r => r !== cur); if (!next || !confirm(`Remove ${cur} from the board list in this browser?\n\nIts saved token and routine settings are deleted here. The repo itself is not changed.`)) return;
-        activateBoard(next); forgetBoard(cur); location.replace(boardUrl()); return; }
-      activateBoard(v); location.replace(boardUrl()); }; })();
+    sw.hidden = repos.length < 2;   // add and remove boards in Settings → Boards
+    sw.onchange = () => { const v = sw.value; sw.value = cur; activateBoard(v); location.replace(boardUrl()); }; }
+  renderSwitcher();
+  // Settings → Boards: the list, add an existing board, and the new-board prompt for Claude
+  function renderBoards() {
+    const box = $('bList'), cur = LS.get('kb_repo'), repos = Object.keys(boardsMap()).sort(); box.textContent = '';
+    if (!repos.length) box.append(el('div', 'hint', 'No board yet. Use Connection to connect one.'));
+    repos.forEach(r => { const row = el('div', 'brow'), name = el('span', 'bname', r); row.append(name);
+      if (r === cur) row.append(el('span', 'bcur', 'this board'));
+      else { const o = el('button', 'small', 'Open'), x = el('button', 'small danger', 'Remove');
+        o.onclick = () => { activateBoard(r); location.replace(boardUrl()); };
+        x.onclick = () => { if (!confirm(`Remove ${r} from the boards in this browser?\n\nIts saved token and routine settings are deleted here. The repo itself is not changed.`)) return; forgetBoard(r); renderBoards(); renderSwitcher(); };
+        row.append(o, x); }
+      box.append(row); }); }
+  $('bAdd').onclick = () => { settingsTab('conn'); $('sRepo').value = ''; $('sToken').value = ''; $('sToken').placeholder = 'github_pat_... (a token for the new repo)'; $('patLink').href = patUrl(); };
+  $('bNewPrompt').onclick = () => { const who = cfg().me || '<your-github-username>';
+    copyText(['Please help me set up a new task board for the Rain Ventures web board (a GitHub repo with the board kit).', '',
+      `My GitHub username is ${who}.`, 'Read this guide first and follow it step by step: https://github.com/rain-ventures-ai/co-assets/blob/master/board/kit/NEW-BOARD.md', '',
+      'Start by asking me the basics from step 1 (repo owner and name, the people on the board, client or area names).',
+      'Rules: never type, paste, read back or store a secret (GitHub token, routine token, cron-job.org key). At each secret step, stop, tell me exactly where to click and what to paste, and wait until I say it is done. Ask me before any step that cannot be undone. Finish with the checks in step 6 and tell me what passed and failed.'].join('\n'),
+      'New-board prompt copied. Paste it into a new chat with Claude.'); };
   document.querySelectorAll('#viewSw button').forEach(b => { b.onclick = () => setView(b.dataset.view); });
   $('btnUnread').onclick = () => { freshOnly = !freshOnly; render(); };
   $('sMarkAll').onclick = () => { markAllSeen(); render(); toast('All cards marked as read'); };
