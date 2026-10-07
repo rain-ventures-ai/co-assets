@@ -9,19 +9,33 @@
     repo: LS.get('kb_repo', ''), branch: LS.get('kb_branch', 'master'), path: LS.get('kb_path', 'board/tasks.json'),
     token: LS.get('kb_token'), me: LS.get('kb_me', ''), api: LS.get('kb_api', 'https://api.github.com') // api override is for local testing only
   });
-  // Optional first-run prefill from the link: ?repo=owner/name&branch=main&path=tasks.json (never the token)
-  (() => { const q = new URLSearchParams(location.search);
-    ['repo', 'branch', 'path'].forEach(k => { const v = q.get(k); if (!v || LS.get('kb_' + k)) return;
-      if (k === 'repo' ? /^[\w.-]+\/[\w.-]+$/.test(v) : /^[\w./-]+$/.test(v)) LS.set('kb_' + k, v); }); })();
+  // ---- several boards: each repo keeps its own branch, path, token and Claude routine in kb_boards (this browser only) ----
+  const BOARD_KEYS = ['branch', 'path', 'token', 'claude_url', 'claude_token'], REPO_RE = /^[\w.-]+\/[\w.-]+$/;
+  const boardsMap = () => { try { const o = JSON.parse(LS.get('kb_boards', '{}')); return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; } catch { return {}; } };
+  function stashBoard() { const repo = LS.get('kb_repo'); if (!repo) return; const m = boardsMap(), e = {};
+    BOARD_KEYS.forEach(k => { const v = LS.get('kb_' + k); if (v) e[k] = v; }); m[repo] = e; LS.set('kb_boards', JSON.stringify(m)); }
+  function activateBoard(repo, over = {}) { // keep the current board's values, then load the saved ones for repo (never carry a token across)
+    stashBoard(); const e = Object.assign({}, boardsMap()[repo] || {}, over); LS.set('kb_repo', repo);
+    BOARD_KEYS.forEach(k => { if (e[k]) LS.set('kb_' + k, e[k]); else LS.del('kb_' + k); }); stashBoard(); }
+  const boardUrl = () => `${location.pathname}?repo=${LS.get('kb_repo')}&branch=${LS.get('kb_branch', 'master')}&path=${LS.get('kb_path', 'board/tasks.json')}`;
+  function forgetBoard(repo) { const m = boardsMap(); delete m[repo]; LS.set('kb_boards', JSON.stringify(m)); }
+  // The link picks the board: ?repo=owner/name&branch=main&path=tasks.json (never the token). A different repo switches to it.
+  (() => { const q = new URLSearchParams(location.search), repo = q.get('repo'), over = {};
+    ['branch', 'path'].forEach(k => { const v = q.get(k); if (v && /^[\w./-]+$/.test(v)) over[k] = v; });
+    const cur = LS.get('kb_repo');
+    if (repo && REPO_RE.test(repo) && cur && repo !== cur) activateBoard(repo, boardsMap()[repo] ? {} : over);
+    else { if (repo && REPO_RE.test(repo) && !cur) LS.set('kb_repo', repo); Object.keys(over).forEach(k => { if (!LS.get('kb_' + k)) LS.set('kb_' + k, over[k]); }); }
+    stashBoard(); })();
   // ---- move settings between browsers/devices: one pasteable code or a setup link (token included) --------------
-  const XFER = { text: ['repo', 'branch', 'path', 'me', 'token', 'collapsed', 'undated', 'tab', 'claude_url', 'claude_token', 'cron_key', 'agents'], pick: { theme: ['auto', 'light', 'dark', 'midnight', 'sand'], style: ['classic', 'colorful'], view: ['board', 'list', 'cal', 'sched'] } };
+  const XFER = { text: ['repo', 'branch', 'path', 'me', 'token', 'collapsed', 'undated', 'tab', 'claude_url', 'claude_token', 'cron_key', 'agents', 'boards'], pick: { theme: ['auto', 'light', 'dark', 'midnight', 'sand'], style: ['classic', 'colorful'], view: ['board', 'list', 'cal', 'sched'] } };
   const xEnc = o => { const b = new TextEncoder().encode(JSON.stringify(o)); let s = ''; b.forEach(c => s += String.fromCharCode(c)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
   const xDec = t => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))));
   function exportCode() { const o = {}; XFER.text.concat(Object.keys(XFER.pick)).forEach(k => { const v = LS.get('kb_' + k, null); if (v !== null && v !== '') o[k] = v; }); return 'kbcfg1.' + xEnc(o); }
   function parseCode(raw) {
     const m = /kbcfg1\.([A-Za-z0-9_-]+)/.exec(String(raw || '')); if (!m) throw new Error('That is not a board settings code.');
     const o = xDec(m[1]), out = {};
-    XFER.text.forEach(k => { if (typeof o[k] === 'string' && o[k].length < 600) out[k] = o[k]; });
+    XFER.text.forEach(k => { if (typeof o[k] === 'string' && o[k].length < (k === 'boards' ? 20000 : 600)) out[k] = o[k]; });
+    if (out.boards) { try { const b = JSON.parse(out.boards); if (!b || typeof b !== 'object' || Array.isArray(b) || !Object.keys(b).every(r => REPO_RE.test(r))) delete out.boards; } catch { delete out.boards; } }
     Object.keys(XFER.pick).forEach(k => { if (XFER.pick[k].includes(o[k])) out[k] = o[k]; });
     if (out.repo && !/^[\w.-]+\/[\w.-]+$/.test(out.repo)) delete out.repo;
     if (out.branch && !/^[\w./-]+$/.test(out.branch)) delete out.branch;
@@ -1251,6 +1265,7 @@
     if (u && !FIRE_RE.test(u)) { m.textContent = 'The routine URL should look like https://api.anthropic.com/v1/claude_code/routines/trig_…/fire'; m.className = 'hint bad'; return; }
     LS.set('kb_claude_url', u); LS.set('kb_claude_token', t); LS.set('kb_cron_key', k);
     LS.set('kb_agents', KNOWN_AGENTS.filter(a => $(a === 'claude' ? 'sUseClaude' : 'sUseCodex').checked).join(','));
+    stashBoard();
     m.textContent = 'Saved in this browser.'; m.className = 'hint ok'; toast('Agent settings saved');
   };
   $('sClaudeTest').onclick = async () => {
@@ -1282,9 +1297,22 @@
   $('sCancel').onclick = () => $('dlgSettings').close();
   $('sForget').onclick = () => { LS.del('kb_token'); $('dlgSettings').close(); state = DEFAULT(); sha = null; lastSyncOk = false; render(); setStatus('Token removed'); };
   $('sSave').onclick = () => {
-    LS.set('kb_repo', $('sRepo').value.trim()); LS.set('kb_branch', $('sBranch').value.trim() || 'master'); LS.set('kb_path', $('sPath').value.trim() || 'board/tasks.json'); LS.set('kb_me', $('sMe').value.trim().replace(/^@/, ''));
-    if ($('sToken').value.trim()) LS.set('kb_token', $('sToken').value.trim()); $('dlgSettings').close(); load();
+    const nr = $('sRepo').value.trim(), moved = nr !== LS.get('kb_repo');
+    if (moved && REPO_RE.test(nr)) activateBoard(nr); else LS.set('kb_repo', nr);   // another repo = another board, with its own token
+    LS.set('kb_branch', $('sBranch').value.trim() || 'master'); LS.set('kb_path', $('sPath').value.trim() || 'board/tasks.json'); LS.set('kb_me', $('sMe').value.trim().replace(/^@/, ''));
+    if ($('sToken').value.trim()) LS.set('kb_token', $('sToken').value.trim()); stashBoard(); $('dlgSettings').close();
+    if (moved) { location.replace(boardUrl()); return; } load();
   };
+  // header board switcher: shown once this browser knows two or more boards
+  (() => { const sw = $('boardSw'); if (!sw) return; const cur = LS.get('kb_repo'), repos = Object.keys(boardsMap()).sort();
+    sw.replaceChildren(...repos.map(r => { const o = document.createElement('option'); o.value = r; o.textContent = r; o.selected = r === cur; return o; }));
+    [['+add', '＋ Add a board…'], ['-rm', '✕ Remove this board from the list']].forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sw.append(o); });
+    sw.hidden = repos.length < 2;
+    sw.onchange = () => { const v = sw.value; sw.value = cur;
+      if (v === '+add') { $('btnSettings').click(); settingsTab('conn'); $('sRepo').value = ''; $('sToken').value = ''; $('sToken').placeholder = 'github_pat_... (a token for the new repo)'; return; }
+      if (v === '-rm') { const next = repos.find(r => r !== cur); if (!next || !confirm(`Remove ${cur} from the board list in this browser?\n\nIts saved token and routine settings are deleted here. The repo itself is not changed.`)) return;
+        activateBoard(next); forgetBoard(cur); location.replace(boardUrl()); return; }
+      activateBoard(v); location.replace(boardUrl()); }; })();
   document.querySelectorAll('#viewSw button').forEach(b => { b.onclick = () => setView(b.dataset.view); });
   $('btnUnread').onclick = () => { freshOnly = !freshOnly; render(); };
   $('sMarkAll').onclick = () => { markAllSeen(); render(); toast('All cards marked as read'); };
