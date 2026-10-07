@@ -866,7 +866,17 @@
 
   $('cCol').onchange = e => { const id = editing, v = e.target.value; saveField(n => { place(n, id, v, null); }, `Move: ${titleOf(id)}`); };
   $('cPrio').onchange = e => { const v = e.target.value; e.target.dataset.v = v; edit(editing, t => { t.priority = v; }, `Priority: ${titleOf(editing)}`); };
-  $('cClient').onchange = e => { const v = e.target.value; edit(editing, t => { t.client = v; }, `Client: ${titleOf(editing)}`); };
+  $('cClient').onchange = e => {
+    let v = e.target.value;
+    if (v === '__new') {
+      const t0 = taskNow(); v = (prompt('New client name:') || '').replace(/\s+/g, ' ').trim();
+      if (!v) { e.target.value = (t0 && t0.client) || ''; return; }
+      const known = state.clients.find(c => c.toLowerCase() === v.toLowerCase()); if (known) v = known;
+      edit(editing, (t, n) => { if (!n.clients.some(c => c.toLowerCase() === v.toLowerCase())) n.clients.push(v); t.client = v; }, `New client: ${v}`);
+      return;
+    }
+    edit(editing, t => { t.client = v; }, `Client: ${titleOf(editing)}`);
+  };
   $('cDue').onchange = e => { const v = e.target.value; $('cDueClear').hidden = !v; edit(editing, t => { t.due = v; }, `Due: ${titleOf(editing)}`); };
   $('cDueClear').onclick = () => { $('cDue').value = ''; $('cDueClear').hidden = true; edit(editing, t => { t.due = ''; }, `Clear due: ${titleOf(editing)}`); };
 
@@ -929,7 +939,9 @@
 
   function fillDrawer(t, force) {
     const set = (x, v) => { if ((force || document.activeElement !== x) && x.value !== v) x.value = v; };
-    if (force) { fillSelect($('cClient'), [['', '(none)'], ...state.clients.map(c => [c, c])]); fillSelect($('cCol'), state.columns.map(c => [c.id, c.name])); }
+    const cl = [...new Set([...state.clients, t.client].filter(Boolean))];
+    if (force || $('cClient').options.length !== cl.length + 2) fillSelect($('cClient'), [['', '(none)'], ...cl.map(c => [c, c]), ['__new', '＋ New client…']]);
+    if (force) { fillSelect($('cCol'), state.columns.map(c => [c.id, c.name])); }
     set($('cCol'), t.column); set($('cPrio'), t.priority || 'medium'); set($('cClient'), t.client || ''); set($('cDue'), t.due || '');
     $('cPrio').dataset.v = $('cPrio').value; $('cDueClear').hidden = !$('cDue').value;
     const ti = $('cTitle'); if (force || (document.activeElement !== ti && ti.value !== t.title)) { ti.value = t.title; fieldBase.title = t.title; } autosize(ti);
