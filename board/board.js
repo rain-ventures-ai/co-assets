@@ -1306,8 +1306,8 @@
   // header board switcher: shown once this browser knows two or more boards
   (() => { const sw = $('boardSw'); if (!sw) return; const cur = LS.get('kb_repo'), repos = Object.keys(boardsMap()).sort();
     sw.replaceChildren(...repos.map(r => { const o = document.createElement('option'); o.value = r; o.textContent = r; o.selected = r === cur; return o; }));
-    [['+add', '＋ Add a board…'], ['-rm', '✕ Remove this board from the list']].forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sw.append(o); });
-    sw.hidden = repos.length < 2;
+    [['+add', '＋ Add a board…']].concat(repos.length > 1 ? [['-rm', '✕ Remove this board from the list']] : []).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sw.append(o); });
+    sw.hidden = !repos.length;   // always there once a board is set, so a second board can be added from it
     sw.onchange = () => { const v = sw.value; sw.value = cur;
       if (v === '+add') { $('btnSettings').click(); settingsTab('conn'); $('sRepo').value = ''; $('sToken').value = ''; $('sToken').placeholder = 'github_pat_... (a token for the new repo)'; return; }
       if (v === '-rm') { const next = repos.find(r => r !== cur); if (!next || !confirm(`Remove ${cur} from the board list in this browser?\n\nIts saved token and routine settings are deleted here. The repo itself is not changed.`)) return;
