@@ -976,7 +976,7 @@
     $('cPrio').dataset.v = $('cPrio').value; $('cDueClear').hidden = !$('cDue').value;
     const ti = $('cTitle'); if (force || (document.activeElement !== ti && ti.value !== t.title)) { ti.value = t.title; fieldBase.title = t.title; } autosize(ti);
     if (!editingDesc) { fieldBase.details = t.details || ''; renderDescView(t); }
-    renderPeople(t); renderLabelChips(t); renderLinkList(t); renderContactList(t); renderClaim(t); renderDlgTodos(force); renderComments(); renderDlgHistory(t); syncSections(t);
+    renderPeople(t); renderLabelChips(t); renderLinkList(t); renderContactList(t); renderClaim(t); renderDlgTodos(force); renderComments(); renderDlgHistory(t); syncSections(t); syncIssueBtn(t);
   }
   // Checklist / Links / Contacts show only when they hold something (or were just opened from the add bar)
   const openSecs = new Set();
@@ -1002,6 +1002,39 @@
     if (focus === 'comments') setTimeout(() => { $('cmSec').scrollIntoView({ block: 'start' }); $('cmText').focus(); }, 60);
   }
   $('cClose').onclick = () => $('dlgCard').close();
+  // ---- GitHub issue from a card: creates an issue that carries the task and tells automation how to report back ----
+  const issueLinkOf = t => { const r = new RegExp('^https://github\\.com/' + cfg().repo.replace(/[.]/g, '\\.') + '/issues/(\\d+)$', 'i'); for (const l of t.links) { const m = r.exec(l.url); if (m) return { url: l.url, n: m[1] }; } return null; };
+  function syncIssueBtn(t) { const b = $('cIssue'), il = issueLinkOf(t); b.hidden = false; b.querySelector('.atxt').textContent = il ? ` Issue #${il.n}` : ' Create issue'; b.title = il ? 'Open the linked GitHub issue' : 'Create a GitHub issue for this task (so Claude or a teammate can work it from GitHub)'; }
+  function issueBody(t) {
+    const { c, skill, agents, web } = boardInfo(), L = [], ref = '#' + t.num;
+    L.push(`**Board task ${ref}**: ${t.title}`, '', [t.client && `Client: ${t.client}`, `Priority: ${t.priority || 'medium'}`, t.due && `Due: ${t.due}`, t.assignees.length && `Assigned: ${t.assignees.map(a => '@' + a).join(' ')}`].filter(Boolean).join(' · '), '');
+    if (t.details) L.push('### Details', t.details, '');
+    if (t.todos.length) L.push('### Checklist', ...t.todos.map(d => `- [${d.done ? 'x' : ' '}] ${d.text}`), '');
+    const ext = t.links.filter(l => !issueLinkOf({ links: [l] }) ); if (ext.length) L.push('### Links', ...ext.map(l => `- [${l.title || l.url}](${l.url})`), '');
+    if (t.comments.length) L.push('### Recent board comments', ...t.comments.slice(-5).map(m => `- **${m.by}**: ${String(m.text).replace(/\n/g, ' ')}`), '');
+    L.push('---', `<!-- board-task: id=${t.id} num=${t.num} -->`, '### Reporting back to the board',
+      `This issue mirrors task ${ref} on the team board (${web}). Automation working it: read ${agents} and ${skill} first, then report with \`python3 board/board.py\` (set BOARD_USER and BOARD_AGENT; with no \`gh\` login set BOARD_TOKEN):`, '```',
+      `board.py show '${ref}'                          # current state`, `board.py comment '${ref}' "progress or question"   # visible to people; @username to flag someone`,
+      `board.py move '${ref}' in-progress|todo|done    # status`, `board.py assign '${ref}' <github-user>            # hand it to a person when you need them`,
+      `board.py link '${ref}' <pr-or-url> --title "PR"  # attach the pull request`, '```', 'Never edit board/tasks.json by hand.');
+    return L.join('\n');
+  }
+  $('cIssue').onclick = async () => {
+    const t = taskNow(); if (!t) return; const il = issueLinkOf(t);
+    if (il) { window.open(il.url, '_blank', 'noopener'); return; }
+    const c = cfg(); if (!c.token) { toast('Add your GitHub token in Settings first', true); return; }
+    if (!confirm(`Create a GitHub issue in ${c.repo} for task #${t.num}?\n\n"${t.title}"\n\nIt will include the description, checklist, recent comments and instructions for reporting back, and be labelled "board-task".`)) return;
+    const b = $('cIssue'); b.disabled = true;
+    try {
+      const r = await fetch(`${c.api}/repos/${c.repo}/issues`, { method: 'POST', headers: { Authorization: `Bearer ${c.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: `[#${t.num}] ${t.title}`, body: issueBody(t), labels: ['board-task'] }) });
+      if (r.status === 403 || r.status === 404) { toast('GitHub refused: your token needs Issues: Read and write on this repo (Settings → Connection → create a new token)', true); return; }
+      if (!r.ok) { toast(`GitHub error ${r.status} creating the issue`, true); return; }
+      const iss = await r.json(), id = t.id;
+      await edit(id, x => { if (!x.links.some(l => l.url === iss.html_url)) x.links.push({ title: `Issue #${iss.number}`, url: iss.html_url }); }, `Issue #${iss.number} for task #${t.num}`);
+      toast(`Created issue #${iss.number}`);
+    } catch (e) { toast('Could not reach GitHub', true); } finally { b.disabled = false; const t2 = taskNow(); if (t2) syncIssueBtn(t2); }
+  };
   $('cAgent').onclick = () => { const t = taskNow(); if (t) copyText(agentPrompt(t), 'Task instructions copied for an agent'); };
   $('dlgCard').addEventListener('close', () => { commitTitle(); closeDesc(true); commentsFor = null; });   // closing never loses typed text
   $('cDelete').onclick = () => { const id = editing; if (!confirm(`Delete "${titleOf(id)}"?`)) return; const title = titleOf(id); editingDesc = false; $('dlgCard').close(); mutate(n => { n.tasks = n.tasks.filter(x => x.id !== id); }, `Delete task: ${title}`, [id]); };
@@ -1053,7 +1086,7 @@
   $('sClose').onclick = $('sDone').onclick = () => $('dlgSettings').close();
   $('btnSettings').onclick = () => { const c = cfg(); $('sVer').textContent = loadedVersion(); settingsTab(c.token ? 'general' : 'conn'); $('sRepo').value = c.repo; $('sBranch').value = c.branch; $('sPath').value = c.path; $('sMe').value = c.me; $('sToken').value = ''; $('sToken').placeholder = c.token ? '(token saved — leave blank to keep)' : 'github_pat_...'; $('dlgSettings').showModal(); };
   const patUrl = () => { const owner = ($('sRepo').value.trim().split('/')[0] || '');
-    const q = new URLSearchParams({ name: 'Team Board', description: 'Team board: read and write tasks.json', expires_in: '90', contents: 'write' });
+    const q = new URLSearchParams({ name: 'Team Board', description: 'Team board: read and write tasks.json and create issues', expires_in: '90', contents: 'write', issues: 'write' });
     if (/^[\w.-]+$/.test(owner)) q.set('target_name', owner);
     return 'https://github.com/settings/personal-access-tokens/new?' + q; };
   $('sRepo').addEventListener('input', () => { $('patLink').href = patUrl(); });
