@@ -57,6 +57,8 @@
   });
 
   let state = DEFAULT(), sha = null, etag = null, busy = false, lastSyncOk = false;
+  const KNOWN_SCHEMA = 2;   // tasks.json version this page understands; a newer file is shown read-only (see board/UPGRADING.md)
+  let newerSchema = 0;
   const $ = id => document.getElementById(id);
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const b64e = s => { const b = new TextEncoder().encode(s); let r = ''; b.forEach(x => r += String.fromCharCode(x)); return btoa(r); };
@@ -138,9 +140,45 @@
       if (res.status === 404) { await diagnose404(); return false; }
       if (res.status === 401 || res.status === 403) { setStatus('Token rejected or lacks access', 'err'); return false; }
       if (!res.ok) { setStatus(`GitHub error ${res.status}`, 'err'); return false; }
-      const data = await res.json(); sha = data.sha; etag = res.headers.get('ETag'); state = normalise(JSON.parse(b64d(data.content))); lastSyncOk = true; initSeen(); setTimeout(openFromHash, 30);
+      const data = await res.json(); sha = data.sha; etag = res.headers.get('ETag'); const raw = JSON.parse(b64d(data.content));
+      newerSchema = Number.isInteger(raw.version) && raw.version > KNOWN_SCHEMA ? raw.version : 0; state = normalise(raw); checkKit(); lastSyncOk = true; initSeen(); setTimeout(openFromHash, 30);
       setStatus('Synced ' + new Date().toLocaleTimeString(), 'ok'); render(); return true;
     } catch (e) { console.error(e); setStatus('Network or parse error', 'err'); return false; }
+  }
+
+  // ---- board kit: is this repo's copy of the shared tools older than the kit published with this page? ----
+  let kitChecked = '';
+  async function checkKit() {
+    const c = cfg(), key = c.repo + '@' + c.branch, bar = $('kitBar'); if (!bar) return;
+    if (newerSchema) { bar.hidden = false; bar.textContent = `This board was saved by newer board tools (schema v${newerSchema}). It is read-only here until this page updates.`; return; }
+    if (kitChecked === key) return; kitChecked = key;
+    try {
+      const want = (await (await fetch('kit/manifest.json', { cache: 'no-store' })).json()).version;
+      const dir = c.path.includes('/') ? c.path.slice(0, c.path.lastIndexOf('/') + 1) : '';
+      const r = await fetch(`${c.api}/repos/${c.repo}/contents/${dir}KIT_VERSION?ref=${encodeURIComponent(c.branch)}`, { cache: 'no-store', headers: { Authorization: `Bearer ${c.token}`, Accept: 'application/vnd.github.raw+json' } });
+      const have = r.ok ? parseInt(await r.text(), 10) || 0 : 0; if (!r.ok && r.status !== 404) return;
+      renderKitBar(have, want);
+    } catch { /* offline or no kit published: say nothing */ }
+  }
+  const kitOwner = () => (state.settings && state.settings.kit_owner) || ((state.people[0] || {}).github || '');
+  function renderKitBar(have, want) {
+    const bar = $('kitBar'); bar.textContent = ''; bar.hidden = !(want > have); if (bar.hidden) return;
+    const owner = kitOwner(), title = `Upgrade board tools to kit v${want}`, card = state.tasks.find(t => t.title === title && t.column !== 'done');
+    bar.append(el('span', null, `Board tools are out of date (this repo v${have}, latest v${want}). `));
+    if (card) { const b = el('button', 'small', `Open #${card.num}`); b.onclick = () => openCard(card.id, 'comments'); bar.append(el('span', null, `Upgrade card #${card.num} is with @${owner}. `), b); return; }
+    if (!owner || (me() || '').toLowerCase() !== owner.toLowerCase()) { bar.append(el('span', null, `The upgrade owner is @${owner || '?'}.`)); return; }
+    const b = el('button', 'small primary', 'Make the upgrade card');
+    b.onclick = async () => {
+      const id = uid(), raw = 'https://github.com/rain-ventures-ai/co-assets/blob/master/board/kit/UPGRADING.md';
+      await mutate(n => { if (n.tasks.some(t => t.title === title && t.column !== 'done')) return;
+        n.tasks.push({ id, title, column: 'todo', client: '', priority: 'medium', due: '', labels: n.labels.some(l => l.name === 'board') ? ['board'] : [], assignees: [owner],
+          details: `This repo's board tools are kit v${have}; the published kit is v${want}.\n\nComment \`@claude upgrade the board kit\` to start your routine. It follows .claude/skills/board-upgrade/SKILL.md (or board/UPGRADING.md in the kit): it copies the kit on a branch, runs the migrations, keeps this repo's own files, checks the board and opens a pull request for you to merge.`,
+          links: [{ title: 'Upgrade notes', url: raw }], contacts: [], todos: ['Read UPGRADING.md for each version', 'kit-update on a branch', 'migrate', 'Check repo-specific files', 'Checks pass', 'Open and link the PR'].map(text => ({ id: todoId(), text, done: false })),
+          comments: [], history: [], claim: null, created: nowIso(), updated: nowIso(), createdBy: me(), updatedBy: me() }); }, title);
+      renderKitBar(have, want); const t = state.tasks.find(x => x.id === id);
+      if (t) { openCard(id, 'comments'); $('cmText').value = '@claude upgrade the board kit'; autosize($('cmText')); }
+    };
+    bar.append(el('span', null, 'You are the upgrade owner. '), b);
   }
 
   // GitHub answers 404 both for a missing file and for a repo your token cannot see, so check which.
@@ -169,6 +207,7 @@
   }
 
   async function save(next, message) {
+    if (newerSchema) { toast(`Not saved: this board uses newer board tools (schema v${newerSchema}). Reload the page; if it stays, the board kit needs an upgrade.`, true); return 'error:schema'; }
     const body = { message, content: b64e(JSON.stringify(next, null, 2) + '\n'), branch: cfg().branch }; if (sha) body.sha = sha;
     const res = await gh('PUT', body);
     if (res.ok) { sha = (await res.json()).content.sha; etag = null; state = next; return 'ok'; }
@@ -254,7 +293,9 @@
         const res = await gh('GET');
         if (!res.ok && res.status !== 404) { setStatus(`GitHub error ${res.status}`, 'err'); state = before; render(); return; }
         let latest = DEFAULT();
-        if (res.ok) { const d = await res.json(); sha = d.sha; latest = normalise(JSON.parse(b64d(d.content))); } else sha = null;
+        if (res.ok) { const d = await res.json(), rawL = JSON.parse(b64d(d.content)); sha = d.sha;
+          if (Number.isInteger(rawL.version) && rawL.version > KNOWN_SCHEMA) { newerSchema = rawL.version; state = before; render(); checkKit(); setStatus('Not saved: board saved by newer tools', 'err'); return; }
+          latest = normalise(rawL); } else sha = null;
         const pre = clone(latest); fn(latest); assignNums(latest);
         if (!resolved) {
           const gone = deletedUnderMe(base, pre, targetIds);
@@ -1252,7 +1293,7 @@
   $('dlgSettings').addEventListener('close', () => document.querySelectorAll('[data-show]').forEach(b => { $(b.dataset.show).type = 'password'; b.textContent = '👁 Show'; b.setAttribute('aria-pressed', 'false'); }));
   $('sClaudePrompt').onclick = () => {
     const c = cfg(), base = `https://github.com/${c.repo}/blob/${c.branch}`, who = c.me || '<your-github-username>';
-    copyText([`Please set up my Claude routine for the Rain Ventures team board, so that typing @claude in a task comment starts it.`, '',
+    copyText([`Please set up my Claude routine for the task board in ${c.repo}, so that typing @claude in a task comment starts it.`, '',
       `My GitHub username is ${who}. The board repo is ${c.repo}.`, 'Read these first:',
       `- ${base}/board/ROUTINE-SETUP.md (the runbook)`, `- ${base}/board/routine-loader.txt (the short prompt to paste into the routine; it points at routine-prompt.md in the repo)`, `- ${base}/.claude/skills/board-routine-setup/SKILL.md (what you may and may not do)`, '',
       'Then ask me which mode I want:', 'A) Guide me: walk me through each step in order and check each one.',

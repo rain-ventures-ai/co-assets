@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "schema": 2,
+  "files": {
+    "board/board.py": "board.py",
+    "board/README.md": "README.md",
+    "board/UPGRADING.md": "UPGRADING.md",
+    "board/ROUTINE-SETUP.md": "ROUTINE-SETUP.md",
+    "board/routine-loader.txt": "routine-loader.txt",
+    "board/routine-prompt.md": "routine-prompt.md",
+    ".claude/skills/board/SKILL.md": "skills/board/SKILL.md",
+    ".claude/skills/board-routine-setup/SKILL.md": "skills/board-routine-setup/SKILL.md",
+    ".claude/skills/board-upgrade/SKILL.md": "skills/board-upgrade/SKILL.md"
+  }
+}
