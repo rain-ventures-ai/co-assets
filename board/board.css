@@ -456,3 +456,18 @@ header .badge { top: -6px; right: -6px; }
 @media (max-width: 760px) { .addbar button { min-height: 40px; } .tag.lplus { min-height: 0; } .dsec { margin-top: 14px; padding-top: 12px; } .dtitle { font-size: 20px; } }
 .cbtns[hidden] { display: none !important; }
 
+
+/* ---- overflow defences: nothing may make the page wider than the screen ------------------ */
+html, body { max-width: 100%; overflow-x: hidden; } @supports (overflow: clip) { html, body { overflow-x: clip; } }
+body > * { min-width: 0; max-width: 100%; }
+header { max-width: 100%; } header > * { min-width: 0; }
+.card, .card .t, .card .n, .tags, .foot, .lrow, .sitem, .pill, .dtitle, .descview, .linkrow, .contact, .cmlist, .cm { min-width: 0; overflow-wrap: anywhere; }
+.card .t, .card .n { overflow-wrap: anywhere; word-break: normal; }
+.foot, .tags, .mm, .c-more, .c-labels { flex-wrap: wrap; max-width: 100%; }
+.chip, .tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.chip.gh { display: inline-block; vertical-align: bottom; }
+.legend, #tabs, .tscroll, .clientbar { max-width: 100%; }
+dialog, dialog.drawer { max-width: 100%; } dialog * { min-width: 0; }
+dialog input, dialog select, dialog textarea { max-width: 100%; box-sizing: border-box; }
+@media (max-width: 760px) { #board, #board > .col, .col .cards, .col .add { max-width: 100%; min-width: 0; } .add input { min-width: 0; width: 100%; } img, video, svg { max-width: 100%; } }
+@media (max-width: 420px) { header { gap: 4px 6px; padding: 6px 8px; } header button { min-width: 36px !important; min-height: 38px; padding: 4px 4px; } header .seg button { min-width: 34px !important; padding: 6px 4px; } .logo { display: none; } }
