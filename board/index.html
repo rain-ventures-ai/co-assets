@@ -58,7 +58,7 @@
   <div class="stabs" role="tablist" aria-label="Settings sections">
     <button id="tabGeneral" role="tab" aria-selected="true" data-tab="general">General</button>
     <button id="tabConn" role="tab" aria-selected="false" data-tab="conn">Connection</button>
-    <button id="tabClaude" role="tab" aria-selected="false" data-tab="claude">Claude</button>
+    <button id="tabClaude" role="tab" aria-selected="false" data-tab="claude">Agents</button>
   </div>
 
   <div id="panelGeneral" role="tabpanel" aria-labelledby="tabGeneral">
@@ -69,7 +69,7 @@
     <div><label>App version</label><button id="sUpdate" type="button">Update to latest version</button><div class="hint">Version <code id="sVer">…</code>. The board checks for a new version about every 10 minutes and whenever you come back to the tab. This button forces a full refresh of the page, styles and scripts, skipping every cache.</div></div>
     <div><label>Move settings to another device</label>
       <div class="cbtns"><button id="xCode" type="button">📋 Copy settings code</button><button id="xLink" type="button">🔗 Copy setup link</button></div>
-      <div class="hint">Copies everything configured in this browser: repository, username, <b>access token</b>, theme, card style and view, and your <b>Claude routine settings</b> (routine URL and token, cron-job.org key). Open the setup link, or paste the code below, on your other browser or phone. Treat both like a password.</div>
+      <div class="hint">Copies everything configured in this browser: repository, username, <b>access token</b>, theme, card style and view, and your <b>agent settings</b> (which agents you use, Claude routine URL and token, cron-job.org key). Open the setup link, or paste the code below, on your other browser or phone. Treat both like a password.</div>
       <textarea id="xPaste" rows="2" placeholder="Paste a settings code or setup link here" aria-label="Settings code to import" style="width:100%;margin-top:8px"></textarea>
       <div class="cbtns"><button id="xImport" type="button">⬇ Import settings</button></div></div>
     <div class="actions"><button id="sDone" class="primary">Done</button></div>
@@ -88,7 +88,11 @@
     <div class="actions"><button id="sForget" class="danger">Forget token</button><span class="spacer"></span><button id="sCancel">Cancel</button><button id="sSave" class="primary">Save &amp; connect</button></div>
   </div>
   <div id="panelClaude" role="tabpanel" aria-labelledby="tabClaude" hidden>
-    <p class="hint" style="margin-top:0">Typing <b>@claude</b> in a comment can start <b>your own</b> Claude routine. Each person sets up their own; these values stay in this browser (like the GitHub token) and travel with "Copy settings code".</p>
+    <p class="hint" style="margin-top:0">Choose the AI agents <b>you</b> use. Only these are offered when you type <b>@</b>. Each person chooses their own; the choice and any keys stay in this browser (like the GitHub token) and travel with "Copy settings code".</p>
+    <div class="agentsw"><label class="chk"><input type="checkbox" id="sUseClaude"> 🤖 Claude</label><label class="chk"><input type="checkbox" id="sUseCodex"> 🤖 Codex</label></div>
+    <div id="boxClaude" class="agentbox" hidden>
+    <h4>Claude</h4>
+    <p class="hint">Typing <b>@claude</b> in a comment can start <b>your own</b> Claude routine. Each person sets up their own.</p>
     <div class="cbtns" style="margin:0 0 6px"><button id="sClaudePrompt" type="button" class="primary">📋 Copy setup prompt for Claude</button></div>
     <div class="hint">Paste it into a new chat with Claude (Claude Code, the desktop app or claude.ai). Claude reads the setup guide and offers to guide you or to do the clicking in your browser. It never handles your secrets: you paste those yourself.</div>
     <label for="sClaudeUrl">Routine trigger URL</label><input id="sClaudeUrl" placeholder="https://api.anthropic.com/v1/claude_code/routines/trig_…/fire" autocomplete="off">
@@ -96,8 +100,14 @@
     <div class="hint">Setup guide: <a href="https://github.com/rain-ventures-ai/consulting/blob/master/board/ROUTINE-SETUP.md" target="_blank" rel="noopener noreferrer">board/ROUTINE-SETUP.md</a> (or ask Claude Code in the repo to "set up my board routine"). From claude.ai/code/routines → your routine → Edit → add an <b>API</b> trigger → copy the URL and generate a token. The token can only start that one routine.</div>
     <label for="sCronKey">cron-job.org API key</label><input id="sCronKey" type="password" autocomplete="off" placeholder="API key"><div class="fldbtns"><button type="button" class="small" data-copy="sCronKey">📋 Copy</button><button type="button" class="small" data-show="sCronKey" aria-pressed="false">👁 Show</button></div>
     <div class="hint">Browsers can't call a routine directly, so a one-off job on your free <a href="https://console.cron-job.org/" target="_blank" rel="noopener noreferrer">cron-job.org</a> account makes the call (Settings → API → enable, create a key). <b>What cron-job.org sees:</b> your routine token and the task number (never the task's text); the job is deleted as soon as it has run. Starting takes about one to two minutes.</div>
+    <div class="actions"><button id="sClaudeTest" type="button">Test cron-job.org key</button></div>
+    </div>
+    <div id="boxCodex" class="agentbox" hidden>
+    <h4>Codex</h4>
+    <p class="hint">Typing <b>@codex</b> mentions Codex on the card. It does not start Codex on its own: OpenAI only lets Codex in the cloud be started from an <b>@codex</b> comment on a GitHub pull request, and offers no trigger the board can call. To have Codex work a task, open the card and use <b>🤖 Copy for agent</b>, then paste it into Codex (it claims and reports through board.py), or use <b>🐙 Create issue</b>.</p>
+    </div>
     <div id="sClaudeMsg" class="hint" role="status"></div>
-    <div class="actions"><button id="sClaudeTest" type="button">Test cron-job.org key</button><span class="spacer"></span><button id="sClaudeSave" type="button" class="primary">Save</button></div>
+    <div class="actions"><span class="spacer"></span><button id="sClaudeSave" type="button" class="primary">Save</button></div>
   </div>
 </dialog>
 

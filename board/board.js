@@ -14,7 +14,7 @@
     ['repo', 'branch', 'path'].forEach(k => { const v = q.get(k); if (!v || LS.get('kb_' + k)) return;
       if (k === 'repo' ? /^[\w.-]+\/[\w.-]+$/.test(v) : /^[\w./-]+$/.test(v)) LS.set('kb_' + k, v); }); })();
   // ---- move settings between browsers/devices: one pasteable code or a setup link (token included) --------------
-  const XFER = { text: ['repo', 'branch', 'path', 'me', 'token', 'collapsed', 'undated', 'tab', 'claude_url', 'claude_token', 'cron_key'], pick: { theme: ['auto', 'light', 'dark', 'midnight', 'sand'], style: ['classic', 'colorful'], view: ['board', 'list', 'cal', 'sched'] } };
+  const XFER = { text: ['repo', 'branch', 'path', 'me', 'token', 'collapsed', 'undated', 'tab', 'claude_url', 'claude_token', 'cron_key', 'agents'], pick: { theme: ['auto', 'light', 'dark', 'midnight', 'sand'], style: ['classic', 'colorful'], view: ['board', 'list', 'cal', 'sched'] } };
   const xEnc = o => { const b = new TextEncoder().encode(JSON.stringify(o)); let s = ''; b.forEach(c => s += String.fromCharCode(c)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
   const xDec = t => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))));
   function exportCode() { const o = {}; XFER.text.concat(Object.keys(XFER.pick)).forEach(k => { const v = LS.get('kb_' + k, null); if (v !== null && v !== '') o[k] = v; }); return 'kbcfg1.' + xEnc(o); }
@@ -607,7 +607,8 @@
     if (busy) { toast('Busy, try again in a moment', true); return; }
     let send = false;
     if (wantsClaude(text)) {
-      if (!claudeReady()) toast('To make @claude start your routine, set it up in Settings → Claude. Posting as a normal comment.');
+      if (!myAgents().includes('claude')) { /* this person does not use Claude: a plain mention */ }
+      else if (!claudeReady()) toast('To make @claude start your routine, set it up in Settings → Agents. Posting as a normal comment.');
       else if (!cfg().me) toast('Set your GitHub username in Settings first. Posting as a normal comment.', true);
       else { const t0 = state.tasks.find(x => x.id === id), other = t0 && t0.claim && claimState(t0.claim) === 'running' && String(t0.claim.session_id || '').indexOf('pending-') !== 0;
         if (other && !confirm(`${t0.claim.agent} already has a running session on this task. Send to Claude anyway?`)) { /* post only */ }
@@ -1086,7 +1087,7 @@
     const refresh = () => {
       tok = token(); if (!tok) { close(); return; }
       const q = tok.q.toLowerCase();
-      if (tok.ch === '@') items = [...state.people.map(p => ({ id: p.github, name: p.name || '', kind: '' })), ...state.agents.map(a => ({ id: a, name: 'agent', kind: '🤖 ' }))]
+      if (tok.ch === '@') items = [...state.people.map(p => ({ id: p.github, name: p.name || '', kind: '' })), ...myAgents().map(a => ({ id: a, name: 'agent', kind: '🤖 ' }))]
         .filter(p => p.id.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)).slice(0, 6).map(p => ({ insert: '@' + p.id, parts: [el('b', null, p.kind + '@' + p.id), el('span', 'sm', p.name)] }));
       else items = state.tasks.filter(t => !q || String(t.num).startsWith(q) || t.title.toLowerCase().includes(q)).sort((a, b) => b.num - a.num).slice(0, 6)
         .map(t => ({ insert: '#' + t.num, parts: [el('b', null, '#' + t.num), el('span', 'sm', t.title)] }));
@@ -1108,6 +1109,11 @@
   const CRON = LS.get('kb_cron_api', 'https://api.cron-job.org'), FAST = !!LS.get('kb_cron_fast') /* local testing only */, FIRE_RE = /^https:\/\/api\.anthropic\.com\/v1\/claude_code\/routines\/trig_[A-Za-z0-9]+\/fire$/;
   const claudeCfg = () => ({ url: LS.get('kb_claude_url'), token: LS.get('kb_claude_token'), cron: LS.get('kb_cron_key') });
   const claudeReady = () => { const c = claudeCfg(); return FIRE_RE.test(c.url) && !!c.token && !!c.cron; };
+  // which agents this person uses (Settings → Agents); before they choose, Claude counts as on if its routine is set up
+  const KNOWN_AGENTS = ['claude', 'codex'];
+  const myAgents = () => { const v = LS.get('kb_agents', null); return v === null ? (claudeReady() ? ['claude'] : []) : v.split(',').filter(a => KNOWN_AGENTS.includes(a)); };
+  const showAgentBoxes = () => { $('boxClaude').hidden = !$('sUseClaude').checked; $('boxCodex').hidden = !$('sUseCodex').checked; };
+  $('sUseClaude').onchange = $('sUseCodex').onchange = showAgentBoxes;
   const cronFetch = (method, path, body) => fetch(CRON + path, { method, headers: { Authorization: 'Bearer ' + claudeCfg().cron, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
   const pad = n => String(n).padStart(2, '0');
   const utcStamp = d => `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00`;
@@ -1187,7 +1193,9 @@
   $('sClaudeSave').onclick = () => {
     const u = $('sClaudeUrl').value.trim(), t = $('sClaudeTok').value.trim(), k = $('sCronKey').value.trim(), m = $('sClaudeMsg');
     if (u && !FIRE_RE.test(u)) { m.textContent = 'The routine URL should look like https://api.anthropic.com/v1/claude_code/routines/trig_…/fire'; m.className = 'hint bad'; return; }
-    LS.set('kb_claude_url', u); LS.set('kb_claude_token', t); LS.set('kb_cron_key', k); m.textContent = 'Saved in this browser.'; m.className = 'hint ok';
+    LS.set('kb_claude_url', u); LS.set('kb_claude_token', t); LS.set('kb_cron_key', k);
+    LS.set('kb_agents', KNOWN_AGENTS.filter(a => $(a === 'claude' ? 'sUseClaude' : 'sUseCodex').checked).join(','));
+    m.textContent = 'Saved in this browser.'; m.className = 'hint ok'; toast('Agent settings saved');
   };
   $('sClaudeTest').onclick = async () => {
     const m = $('sClaudeMsg'); $('sClaudeSave').onclick(); const c = claudeCfg();
@@ -1203,7 +1211,8 @@
     const ids = { general: ['panelGeneral', 'tabGeneral'], conn: ['panelConn', 'tabConn'], claude: ['panelClaude', 'tabClaude'] };
     Object.keys(ids).forEach(n => { const on = n === name; $(ids[n][0]).hidden = !on; $(ids[n][1]).setAttribute('aria-selected', String(on)); });
     if (name === 'conn') setTimeout(() => $('sRepo').focus(), 30);
-    if (name === 'claude') { $('sClaudeUrl').value = LS.get('kb_claude_url'); $('sClaudeTok').value = LS.get('kb_claude_token'); $('sCronKey').value = LS.get('kb_cron_key'); $('sClaudeMsg').textContent = ''; }
+    if (name === 'claude') { $('sClaudeUrl').value = LS.get('kb_claude_url'); $('sClaudeTok').value = LS.get('kb_claude_token'); $('sCronKey').value = LS.get('kb_cron_key'); $('sClaudeMsg').textContent = '';
+      const mine = myAgents(); $('sUseClaude').checked = mine.includes('claude'); $('sUseCodex').checked = mine.includes('codex'); showAgentBoxes(); }
   }
   document.querySelectorAll('.stabs button').forEach(b => { b.onclick = () => settingsTab(b.dataset.tab); });
   $('sClose').onclick = $('sDone').onclick = () => $('dlgSettings').close();
