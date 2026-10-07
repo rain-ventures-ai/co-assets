@@ -592,9 +592,16 @@ def cmd_add(a):
 
 
 # ---- board kit: the shared tools live in co-assets board/kit and are copied into each board repo -------------
+class KitError(Exception):
+    """The published kit could not be read (offline, blocked, or not published yet)."""
+
+
 def kit_fetch(name, src=None):
     if src:
-        return open(os.path.join(src, name), "rb").read()
+        try:
+            return open(os.path.join(src, name), "rb").read()
+        except OSError as e:
+            raise KitError(f"cannot read {name} from the kit: {e}")
     try:
         with urllib.request.urlopen(urllib.request.Request(f"{KIT_URL}/{name}", headers={"User-Agent": "board-cli"}), timeout=30) as r:
             return r.read()
@@ -612,7 +619,7 @@ def kit_clone():
         d = tempfile.mkdtemp(prefix="board-kit-")
         p = subprocess.run(["git", "clone", "-q", "--depth", "1", KIT_GIT, d], capture_output=True, text=True)
         if p.returncode:
-            sys.exit(f"cannot fetch the board kit from {KIT_URL} or {KIT_GIT}: {p.stderr.strip()}")
+            raise KitError(f"cannot fetch the board kit from {KIT_URL} or {KIT_GIT}: {p.stderr.strip()}")
         _KIT_DIR = os.path.join(d, "board", "kit")
     return _KIT_DIR
 
@@ -631,7 +638,10 @@ def kit_owner(data):
 
 
 def cmd_kit_check(a):
-    m = json.loads(kit_fetch("manifest.json", a.source))
+    try:
+        m = json.loads(kit_fetch("manifest.json", a.source))
+    except (KitError, ValueError) as e:
+        print(f"could not check the board kit ({e}); carry on"); return
     have, want = kit_local(), m["version"]
     if have >= want:
         print(f"board kit is current (v{have})"); return
@@ -662,11 +672,14 @@ def cmd_kit_check(a):
 
 
 def cmd_kit_update(a):
-    m = json.loads(kit_fetch("manifest.json", a.source))
+    try:
+        m = json.loads(kit_fetch("manifest.json", a.source))
+        files = {dest: kit_fetch(src, a.source) for dest, src in m["files"].items()}  # fetch everything before writing anything
+    except (KitError, ValueError) as e:
+        sys.exit(f"kit-update stopped, nothing changed: {e}")
     have = kit_local()
     changed = []
-    for dest, src in m["files"].items():
-        new = kit_fetch(src, a.source)
+    for dest, new in files.items():
         path = os.path.join(ROOT, dest)
         old = open(path, "rb").read() if os.path.exists(path) else None
         if old != new:
