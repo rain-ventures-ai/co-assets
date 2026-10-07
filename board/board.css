@@ -486,3 +486,4 @@ a.mref { color: var(--accent); font-weight: 600; text-decoration: none; backgrou
 @media (max-width: 760px) { .sug { min-height: 44px; align-items: center; } }
 .hint.ok { color: var(--ok); } .hint.bad { color: var(--danger); }
 .sesslink { display: inline-block; margin-top: 4px; color: var(--accent); font-weight: 600; font-size: 13px; }
+.fldbtns { display: flex; gap: 6px; margin-top: 4px; }

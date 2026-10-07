@@ -1158,6 +1158,12 @@
   $('sendPost').onclick = () => sendResolve && sendResolve('post');
   $('sendNo').onclick = () => sendResolve && sendResolve('cancel');
   $('dlgSend').addEventListener('cancel', () => { sendResolve && sendResolve('cancel'); });   // Esc
+  // copy / show for the secret fields (copies exactly what is in the box; the value is never shown in a message)
+  const SAVED = { sToken: 'kb_token', sClaudeTok: 'kb_claude_token', sCronKey: 'kb_cron_key' };   // the saved value, for fields that are left blank on purpose
+  const secretOf = id => $(id).value || LS.get(SAVED[id]);
+  document.querySelectorAll('[data-copy]').forEach(b => { b.onclick = () => { const v = secretOf(b.dataset.copy); if (!v) { toast('Nothing to copy: no value saved yet', true); return; } copyText(v, 'Copied. Treat it like a password.'); }; });
+  document.querySelectorAll('[data-show]').forEach(b => { b.onclick = () => { const id = b.dataset.show, i = $(id), on = i.type === 'password'; if (on && !i.value) i.value = LS.get(SAVED[id]); i.type = on ? 'text' : 'password'; b.textContent = on ? '🙈 Hide' : '👁 Show'; b.setAttribute('aria-pressed', String(on)); }; });
+  $('dlgSettings').addEventListener('close', () => document.querySelectorAll('[data-show]').forEach(b => { $(b.dataset.show).type = 'password'; b.textContent = '👁 Show'; b.setAttribute('aria-pressed', 'false'); }));
   $('sClaudePrompt').onclick = () => {
     const c = cfg(), base = `https://github.com/${c.repo}/blob/${c.branch}`, who = c.me || '<your-github-username>';
     copyText([`Please set up my Claude routine for the Rain Ventures team board, so that typing @claude in a task comment starts it.`, '',
