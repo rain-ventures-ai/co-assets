@@ -490,3 +490,11 @@ a.mref { color: var(--accent); font-weight: 600; text-decoration: none; backgrou
 .agentsw { display: flex; gap: 18px; flex-wrap: wrap; margin: 4px 0 8px; } .agentsw label.chk { display: flex; flex-direction: row; align-items: center; gap: 8px; font-weight: 600; min-height: 40px; margin: 0; }
 .agentbox { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 6px; } .agentbox h4 { margin: 6px 0 2px; font-size: 14px; }
 .lastrun { font-size: 12.5px; color: var(--muted); margin: -2px 0 10px; } .lastrun .sesslink { font-weight: 600; }
+/* phones: hold a card to pick it up, drop it on a lane in the Move bar */
+@media (max-width: 760px) { .card { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; } }
+.card.lifted { opacity: .35; }
+.dragghost { position: fixed; z-index: 1000; pointer-events: none; max-width: 70vw; padding: 8px 12px; border-radius: 10px; background: var(--card); color: var(--text); border: 2px solid var(--accent); box-shadow: 0 10px 26px rgba(0,0,0,.3); font-size: 13px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transform: rotate(-2deg); }
+.movebar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1001; background: var(--card); border-top: 1px solid var(--border); box-shadow: 0 -8px 24px rgba(0,0,0,.25); padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); }
+.movebar .mvhead { font-weight: 700; font-size: 14px; margin-bottom: 8px; } .movebar .mvhint { font-size: 12px; color: var(--muted); margin-top: 8px; text-align: center; }
+.movebar .mvrow { display: flex; gap: 8px; } .droptgt { flex: 1 1 0; min-width: 0; min-height: 64px; display: flex; align-items: center; justify-content: center; text-align: center; border: 2px dashed var(--border); border-radius: 12px; font-weight: 600; font-size: 14px; padding: 6px; background: var(--panel); }
+.droptgt.over { border-style: solid; border-color: var(--accent); background: var(--accent-soft); color: var(--accent); transform: scale(1.04); }

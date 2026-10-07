@@ -461,9 +461,43 @@
     });
     const on = box.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'center' });
   }
+  // ---- phones: hold a card to pick it up; a Move bar appears and you drop the card on another lane ----------------
+  const lift = { active: false, timer: null, t: null, card: null, ghost: null, bar: null, over: null, x: 0, y: 0, dx: 0, dy: 0, justLifted: false };
+  const phone = () => window.matchMedia('(max-width: 760px)').matches;
+  function liftStart(e, t, card) {
+    if (!phone() || e.touches.length !== 1 || e.target.closest('button, a, input, select, textarea')) return;
+    const p = e.touches[0], r = card.getBoundingClientRect(); lift.x = p.clientX; lift.y = p.clientY; lift.dx = p.clientX - r.left; lift.dy = p.clientY - r.top;
+    clearTimeout(lift.timer); lift.timer = setTimeout(() => liftUp(t, card), 380);
+  }
+  function liftUp(t, card) {
+    lift.timer = null; lift.active = true; lift.t = t; lift.card = card; card.classList.add('lifted');
+    if (navigator.vibrate) try { navigator.vibrate(12); } catch {}
+    const g = el('div', 'dragghost'); g.append(el('b', null, '#' + t.num + ' '), document.createTextNode(t.title));   // a small label that rides just above the finger
+    document.body.append(g); lift.ghost = g; liftMoveGhost(lift.x, lift.y);
+    const bar = el('div', 'movebar'); bar.append(el('div', 'mvhead', `Move #${t.num} to…`));
+    const row = el('div', 'mvrow'); state.columns.filter(c => c.id !== t.column).forEach(c => { const d = el('div', 'droptgt', c.name); d.dataset.col = c.id; row.append(d); });
+    bar.append(row, el('div', 'mvhint', 'Drop it on a lane, or let go anywhere else to cancel')); document.body.append(bar); lift.bar = bar;
+  }
+  function liftMoveGhost(x, y) { const g = lift.ghost; if (g) { g.style.left = Math.max(8, Math.min(innerWidth - g.offsetWidth - 8, x - g.offsetWidth / 2)) + 'px'; g.style.top = (y - g.offsetHeight - 28) + 'px'; } }
+  function liftEnd(drop) {
+    clearTimeout(lift.timer); lift.timer = null; if (!lift.active) return;
+    const t = lift.t, col = drop && lift.over ? lift.over.dataset.col : null;
+    if (lift.card) lift.card.classList.remove('lifted'); if (lift.ghost) lift.ghost.remove(); if (lift.bar) lift.bar.remove();
+    Object.assign(lift, { active: false, t: null, card: null, ghost: null, bar: null, over: null, justLifted: true }); setTimeout(() => { lift.justLifted = false; }, 400);
+    if (col) { const name = (state.columns.find(c => c.id === col) || {}).name || col; moveTo(t.id, col); toast(`Moved #${t.num} to ${name}`); }
+  }
+  document.addEventListener('touchmove', e => {
+    if (lift.timer && !lift.active) { const p = e.touches[0]; if (Math.hypot(p.clientX - lift.x, p.clientY - lift.y) > 10) { clearTimeout(lift.timer); lift.timer = null; } return; }   // scrolling, not holding
+    if (!lift.active) return; e.preventDefault(); const p = e.touches[0]; liftMoveGhost(p.clientX, p.clientY);
+    const hit = document.elementFromPoint(p.clientX, p.clientY), tg = hit && hit.closest('.droptgt');
+    if (tg !== lift.over) { if (lift.over) lift.over.classList.remove('over'); lift.over = tg; if (tg) { tg.classList.add('over'); if (navigator.vibrate) try { navigator.vibrate(6); } catch {} } }
+  }, { passive: false });
+  document.addEventListener('touchend', () => liftEnd(true)); document.addEventListener('touchcancel', () => liftEnd(false));
+  document.addEventListener('contextmenu', e => { if (lift.active || lift.timer) e.preventDefault(); });
+
   (() => { let x0 = null, y0 = 0; const b = $('board');
     b.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
-    b.addEventListener('touchend', e => { if (x0 == null || !window.matchMedia('(max-width: 760px)').matches) return;
+    b.addEventListener('touchend', e => { if (x0 == null || lift.active || !window.matchMedia('(max-width: 760px)').matches) return;
       const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null;
       if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
       const v = visibleCols(), i = v.findIndex(c => c.id === activeCol()), n = v[i + (dx < 0 ? 1 : -1)]; if (n) setTab(n.id); }, { passive: true }); })();
@@ -806,7 +840,8 @@
     c.addEventListener('dragover', e => e.preventDefault());
     c.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); dropOn(e, t.column, t.id); });
     c.addEventListener('dblclick', () => openCard(t.id));
-    c.addEventListener('click', e => { if (window.matchMedia('(max-width: 760px)').matches && !e.target.closest('button, a, input, select, textarea')) openCard(t.id); });   // phones: tap a card to open it (and change its status there)
+    c.addEventListener('click', e => { if (phone() && !lift.justLifted && !e.target.closest('button, a, input, select, textarea')) openCard(t.id); });   // phones: tap a card to open it (and change its status there)
+    c.addEventListener('touchstart', e => liftStart(e, t, c), { passive: true });   // phones: hold to pick it up and drop it on another lane   // phones: tap a card to open it (and change its status there)
     const fr = freshInfo(t);
     const top = el('div', 'top'); top.append(numChip(t)); if (fr.changed) { const d = el('span', 'cdot'); d.title = 'Changed since you last looked'; top.append(d); } if (t.priority) top.append(el('span', 'prio ' + t.priority, t.priority)); top.append(el('span', 'spacer'));
     const edit = el('button', 'ico', '✏️'), bot = el('button', 'ico', '🤖');
