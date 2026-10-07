@@ -661,7 +661,7 @@
   function chipTodo(t) { const tc = todoCount(t); if (!tc.all) return null; const b = el('button', 'chip todochip' + (tc.done === tc.all ? ' full' : ''), `☑ ${tc.done}/${tc.all}`); b.title = 'Show or hide the checklist'; b.onclick = () => { openLists.has(t.id) ? openLists.delete(t.id) : openLists.add(t.id); render(); }; return b; }
   function chipComments(t) { const n = t.comments.length; if (!n) return null; const fr = freshInfo(t); const b = el('button', 'chip cmchip has' + (fr.unread ? ' unread' : ''), `💬 ${n}`); if (fr.unread) b.append(newBadge(fr.unread)); b.title = `${n} comment${n > 1 ? 's' : ''}`; b.onclick = () => openCard(t.id, 'comments'); return b; }
   function chipMention(t) { return freshInfo(t).mention ? el('span', 'chip mentionchip', '@ you') : null; }
-  function chipAgent(t) { if (!t.claim) return null; const st = claimState(t.claim); return el('span', 'chip agentchip ' + st, `🤖 ${t.claim.agent} · ${st}`); }
+  function chipAgent(t) { if (!t.claim || t.claim.status === 'done') return null; const st = claimState(t.claim); return el('span', 'chip agentchip ' + st, `🤖 ${t.claim.agent} · ${st}`); }
   function chipsGh(t) { const out = []; t.links.forEach(l => { const g = ghLink(l.url); if (!g) return; const a = el('a', 'chip gh ' + g.kind, g.label); a.href = safeUrl(l.url); a.target = '_blank'; a.rel = 'noopener noreferrer'; out.push(a); }); return out; }
   const labelTags = (t, max) => { const out = []; t.labels.slice(0, max || 99).forEach(l => { const s = el('span', 'tag label', l); s.style.background = labelColor(l); out.push(s); }); if (max && t.labels.length > max) out.push(el('span', 'tag', '+' + (t.labels.length - max))); return out; };
 
@@ -976,12 +976,20 @@
     const k = { name: p[0], role: p[1] || '', email: p[2] || '', phone: p[3] || '' }; $('cContactNew').value = ''; edit(editing, t => { t.contacts.push(k); }, `Contacts: ${titleOf(editing)}`); });
 
   function renderClaim(t) {
-    const wrap = $('cClaimWrap'); wrap.hidden = !t.claim; const dl = $('cClaim'); dl.textContent = ''; if (!t.claim) return;
+    // a finished run leaves no banner, just one "Last run" line with its link (older cards kept a claim with status done)
+    const done = t.claim && t.claim.status === 'done', live = t.claim && !done ? t.claim : null, last = t.last_run || (done ? t.claim : null), lr = $('cLastRun');
+    lr.textContent = ''; lr.hidden = !last || !!live;
+    if (last && !live) {
+      lr.append(el('span', null, `✓ Last run: ${last.agent || 'agent'}${last.on_behalf_of ? ' for @' + last.on_behalf_of : ''} · ${ago(last.finished_at || last.heartbeat_at || last.claimed_at)}`));
+      if (last.session_url && safeUrl(last.session_url)) { const a = el('a', 'sesslink', /\/routines\//.test(last.session_url) ? 'Routine runs ↗' : 'Open session ↗'); a.href = safeUrl(last.session_url); a.target = '_blank'; a.rel = 'noopener noreferrer'; lr.append(document.createTextNode(' · '), a); }
+      if (last.note) lr.title = last.note;
+    }
+    const wrap = $('cClaimWrap'); wrap.hidden = !live; const dl = $('cClaim'); dl.textContent = ''; if (!live) return;
     const k = t.claim, st = claimState(k); wrap.className = 'claimbanner ' + st;
     const top = el('div', 'cltop'); top.append(el('span', 'pulse'), el('b', null, k.agent), document.createTextNode(`${k.on_behalf_of ? ' for @' + k.on_behalf_of : ''} · ${st} · beat ${ago(k.heartbeat_at || k.claimed_at)}`)); dl.append(top);
     if (k.note) dl.append(el('div', 'cnote', k.note));
     dl.append(el('div', 'host', [k.session_id && 'session ' + k.session_id, k.host, k.branch].filter(Boolean).join(' · ')));
-    if (k.session_url && safeUrl(k.session_url)) { const sa = el('a', 'sesslink', 'Open the Claude session ↗'); sa.href = safeUrl(k.session_url); sa.target = '_blank'; sa.rel = 'noopener noreferrer'; dl.append(sa); }
+    if (k.session_url && safeUrl(k.session_url)) { const sa = el('a', 'sesslink', /\/routines\//.test(k.session_url) ? 'Open the routine’s runs ↗' : 'Open the Claude session ↗'); sa.href = safeUrl(k.session_url); sa.target = '_blank'; sa.rel = 'noopener noreferrer'; dl.append(sa); }
   }
   $('cStuck').onclick = () => edit(editing, t => { if (t.claim) { t.claim.status = 'stuck'; t.claim.note = (t.claim.note ? t.claim.note + ' | ' : '') + `marked stuck by ${me() || 'human'}`; } }, `Mark stuck: ${titleOf(editing)}`);
   $('cRelease').onclick = () => { if (!confirm('Release the agent claim? The agent session may still be running.')) return; edit(editing, t => { t.claim = null; }, `Release claim: ${titleOf(editing)}`); };
@@ -1120,6 +1128,7 @@
   // Only the task NUMBER and the requester travel through it (the routine reads the real content from the board); the job is deleted once it has run.
   const CRON = LS.get('kb_cron_api', 'https://api.cron-job.org'), FAST = !!LS.get('kb_cron_fast') /* local testing only */, FIRE_RE = /^https:\/\/api\.anthropic\.com\/v1\/claude_code\/routines\/trig_[A-Za-z0-9]+\/fire$/;
   const claudeCfg = () => ({ url: LS.get('kb_claude_url'), token: LS.get('kb_claude_token'), cron: LS.get('kb_cron_key') });
+  const routinePage = () => { const m = /\/routines\/(trig_[A-Za-z0-9]+)\/fire$/.exec(claudeCfg().url); return m ? `https://claude.ai/code/routines/${m[1]}` : ''; };
   const claudeReady = () => { const c = claudeCfg(); return FIRE_RE.test(c.url) && !!c.token && !!c.cron; };
   // which agents this person uses (Settings → Agents); before they choose, Claude counts as on if its routine is set up
   const KNOWN_AGENTS = ['claude', 'codex'];
@@ -1151,7 +1160,7 @@
     return { jobId: (await r.json()).jobId, at };
   }
   async function watchClaudeJob(jobId, taskId, who) {   // find the session URL in the routine's response, record it on the card, delete the job
-    const sleep = ms => new Promise(r => setTimeout(r, ms)); let session = null, err = '';
+    const sleep = ms => new Promise(r => setTimeout(r, ms)); let session = null, err = '', noBody = 0;
     try {
       for (let i = 0; i < 24 && !session && !err; i++) {
         await sleep(FAST ? 300 : (i === 0 ? 70000 : 15000));
@@ -1161,12 +1170,15 @@
         const dr = await cronFetch('GET', `/jobs/${jobId}/history/${it.identifier}`); let body = '';
         if (dr.ok) { const d = (await dr.json()).jobHistoryDetails || {}; body = d.body || ''; }
         const m = /https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]+/.exec(body); if (m) session = { url: m[0], id: m[0].split('/').pop() };
-        else if (!err && it.httpStatus && it.httpStatus < 400) session = { url: '', id: 'started' };
+        else if (!err && it.httpStatus && it.httpStatus < 400 && ++noBody >= 3) session = { url: routinePage(), id: 'started' };   // started, but cron-job.org kept no reply: link the routine's run list
       }
     } catch (e) { err = 'could not read the result from cron-job.org'; }
     try { await cronFetch('DELETE', `/jobs/${jobId}`); } catch {}   // never leave the routine token parked there
     await edit(taskId, t => {
-      if (!t.claim || String(t.claim.session_id || '').indexOf('pending-') !== 0) return;   // the routine already took over the claim
+      if (!t.claim || String(t.claim.session_id || '').indexOf('pending-') !== 0) {   // the routine already took over the claim (or finished): add the link if it has none
+        const k = t.claim && t.claim.agent === 'claude' ? t.claim : (t.last_run && t.last_run.agent === 'claude' ? t.last_run : null);
+        if (session && session.url && k && !k.session_url) k.session_url = session.url;
+        return; }
       if (session) { t.claim.session_id = session.id; t.claim.session_url = session.url; t.claim.note = `Claude is working for @${who}`; t.claim.heartbeat_at = nowIso(); }
       else { t.claim.status = 'stuck'; t.claim.note = `Send to Claude failed: ${err || 'no response from the routine'}`; }
     }, session ? `Claude session started for #${(state.tasks.find(x => x.id === taskId) || {}).num}` : 'Send to Claude failed');
