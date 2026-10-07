@@ -467,6 +467,7 @@
   function liftStart(e, t, card) {
     if (!phone() || e.touches.length !== 1 || e.target.closest('button, a, input, select, textarea')) return;
     const p = e.touches[0], r = card.getBoundingClientRect(); lift.x = p.clientX; lift.y = p.clientY; lift.dx = p.clientX - r.left; lift.dy = p.clientY - r.top;
+    if (!lift.src || lift.src !== e.target) { lift.src = e.target; listenLift(e.target); }
     clearTimeout(lift.timer); lift.timer = setTimeout(() => liftUp(t, card), 380);
   }
   function liftUp(t, card) {
@@ -486,13 +487,17 @@
     Object.assign(lift, { active: false, t: null, card: null, ghost: null, bar: null, over: null, justLifted: true }); setTimeout(() => { lift.justLifted = false; }, 400);
     if (col) { const name = (state.columns.find(c => c.id === col) || {}).name || col; moveTo(t.id, col); toast(`Moved #${t.num} to ${name}`); }
   }
-  document.addEventListener('touchmove', e => {
+  const seen = new WeakSet(), once = fn => e => { if (seen.has(e)) return; seen.add(e); fn(e); };
+  const onLiftMove = once(e => {
     if (lift.timer && !lift.active) { const p = e.touches[0]; if (Math.hypot(p.clientX - lift.x, p.clientY - lift.y) > 10) { clearTimeout(lift.timer); lift.timer = null; } return; }   // scrolling, not holding
     if (!lift.active) return; e.preventDefault(); const p = e.touches[0]; liftMoveGhost(p.clientX, p.clientY);
     const hit = document.elementFromPoint(p.clientX, p.clientY), tg = hit && hit.closest('.droptgt');
     if (tg !== lift.over) { if (lift.over) lift.over.classList.remove('over'); lift.over = tg; if (tg) { tg.classList.add('over'); if (navigator.vibrate) try { navigator.vibrate(6); } catch {} } }
-  }, { passive: false });
-  document.addEventListener('touchend', () => liftEnd(true)); document.addEventListener('touchcancel', () => liftEnd(false));
+  });
+  const onLiftEnd = once(() => liftEnd(true)), onLiftCancel = once(() => liftEnd(false));
+  const listenLift = n => { n.addEventListener('touchmove', onLiftMove, { passive: false }); n.addEventListener('touchend', onLiftEnd); n.addEventListener('touchcancel', onLiftCancel); };
+  listenLift(document);
+  ['dragstart', 'blur'].forEach(ev => window.addEventListener(ev, () => { if (lift.active) liftEnd(false); }, true));   // never leave a card "in the air"
   document.addEventListener('contextmenu', e => { if (lift.active || lift.timer) e.preventDefault(); });
 
   (() => { let x0 = null, y0 = 0; const b = $('board');
@@ -834,7 +839,7 @@
   function numChip(t) { const b = el('button', 'numchip', '#' + t.num); b.type = 'button'; b.title = `Task #${t.num}: click to copy the reference`; b.setAttribute('aria-label', `Task number ${t.num}, copy`);
     b.onclick = e => { e.stopPropagation(); copyText('#' + t.num, `Copied #${t.num}`); }; return b; }
   function cardEl(t, ci) {
-    const c = el('div', 'card' + (t.priority ? ' p-' + t.priority : '')); c.draggable = true; paint(c, t);
+    const c = el('div', 'card' + (t.priority ? ' p-' + t.priority : '')); c.draggable = !phone(); paint(c, t);   // phones use hold-to-move instead: the browser's own drag would swallow the touch
     c.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', t.id); c.classList.add('dragging'); });
     c.addEventListener('dragend', () => c.classList.remove('dragging'));
     c.addEventListener('dragover', e => e.preventDefault());
