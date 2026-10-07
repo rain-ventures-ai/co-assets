@@ -150,7 +150,8 @@
   let kitChecked = '';
   async function checkKit() {
     const c = cfg(), key = c.repo + '@' + c.branch, bar = $('kitBar'); if (!bar) return;
-    if (newerSchema) { bar.hidden = false; bar.textContent = `This board was saved by newer board tools (schema v${newerSchema}). It is read-only here until this page updates.`; return; }
+    if (newerSchema) { bar.hidden = false; bar.dataset.schema = '1'; bar.textContent = `This board was saved by newer board tools (schema v${newerSchema}). It is read-only here until this page updates.`; return; }
+    if (bar.dataset.schema) { delete bar.dataset.schema; bar.hidden = true; kitChecked = ''; }
     if (kitChecked === key) return; kitChecked = key;
     try {
       const want = (await (await fetch('kit/manifest.json', { cache: 'no-store' })).json()).version;
@@ -1339,7 +1340,8 @@
   $('sForget').onclick = () => { LS.del('kb_token'); $('dlgSettings').close(); state = DEFAULT(); sha = null; lastSyncOk = false; render(); setStatus('Token removed'); };
   $('sSave').onclick = () => {
     const nr = $('sRepo').value.trim(), moved = nr !== LS.get('kb_repo');
-    if (moved && REPO_RE.test(nr)) activateBoard(nr); else LS.set('kb_repo', nr);   // another repo = another board, with its own token
+    if (!REPO_RE.test(nr)) { toast('The repository must look like owner/name', true); return; }
+    if (moved) activateBoard(nr);   // another repo = another board, with its own token
     LS.set('kb_branch', $('sBranch').value.trim() || 'master'); LS.set('kb_path', $('sPath').value.trim() || 'board/tasks.json'); LS.set('kb_me', $('sMe').value.trim().replace(/^@/, ''));
     if ($('sToken').value.trim()) LS.set('kb_token', $('sToken').value.trim()); stashBoard(); $('dlgSettings').close();
     if (moved) { location.replace(boardUrl()); return; } load();

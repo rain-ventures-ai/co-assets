@@ -246,6 +246,7 @@ def mutate(fn, message):
     for attempt in range(6):
         data, sha = load()
         guard_schema(data)
+        migrate_data(data)  # an older file is brought up to SCHEMA by the first write (the web board does the same)
         out = io.StringIO()  # fn's messages are printed only once the save has worked, so a retry does not repeat them
         with contextlib.redirect_stdout(out):
             result = fn(data)
@@ -273,6 +274,14 @@ def guard_schema(data):
 MIGRATIONS = {
     1: lambda d: d,  # v1 -> v2: the web board and board.py already read v1 cards; only the version number changes
 }
+
+
+def migrate_data(data):
+    v = data.get("version", 1) if isinstance(data.get("version", 1), int) else 1
+    steps = []
+    while v < SCHEMA:
+        MIGRATIONS[v](data); v += 1; data["version"] = v; steps.append(v)
+    return steps
 
 
 def who_am_i(t=None):
@@ -668,6 +677,7 @@ def cmd_kit_check(a):
             hist(t, "created by kit-check")
             data["tasks"].append(t); assign_nums(data); print(f"added #{t['num']} for @{owner or '?'}: {title}")
         mutate(fn, f"Add task: Upgrade board tools to kit v{want}")
+        return  # with --card the caller carries on with its own work
     sys.exit(3)
 
 
@@ -692,11 +702,7 @@ def cmd_kit_update(a):
 
 def cmd_migrate(a):
     def fn(data):
-        v = data.get("version", 1) if isinstance(data.get("version", 1), int) else 1
-        if v >= SCHEMA:
-            print(f"tasks.json is already schema v{v}: nothing to migrate"); return
-        while v < SCHEMA:
-            MIGRATIONS[v](data); v += 1; data["version"] = v; print(f"migrated tasks.json to schema v{v}")
+        print(f"migrated tasks.json to schema v{SCHEMA}")  # mutate() has already applied the steps
     data, _ = load(); guard_schema(data)
     if data.get("version", 1) == SCHEMA:
         print(f"tasks.json is already schema v{SCHEMA}: nothing to migrate"); return
