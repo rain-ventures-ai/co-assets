@@ -540,3 +540,8 @@ header .boardwrap { order: 0; }
 .pubwarn h2 { margin: 6px 0 12px; font-size: 26px; color: var(--danger); } .pubicon { font-size: 52px; line-height: 1; }
 .pubwarn p { font-size: 15px; line-height: 1.5; } .pubwarn .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 16px; }
 .btnlink { display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 8px; background: var(--accent); color: var(--on-accent); text-decoration: none; font-weight: 600; }
+
+/* the Filters badge counts filters that are on: not an alert, so not red */
+header #filterBadge { background: var(--accent); }
+.alkinds { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin: 8px 0; } @media (max-width: 560px) { .alkinds { grid-template-columns: 1fr; } }
+label.chk.big { font-size: 15px; font-weight: 600; }

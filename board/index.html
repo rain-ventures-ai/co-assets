@@ -73,6 +73,7 @@
     <button id="tabConn" role="tab" aria-selected="false" data-tab="conn">Connection</button>
     <button id="tabClaude" role="tab" aria-selected="false" data-tab="claude">Agents</button>
     <button id="tabBoards" role="tab" aria-selected="false" data-tab="boards">Boards</button>
+    <button id="tabAlerts" role="tab" aria-selected="false" data-tab="alerts">Alerts</button>
     <button id="tabChecks" role="tab" aria-selected="false" data-tab="checks">Checks</button>
   </div>
 
@@ -111,6 +112,15 @@
     <p class="hint">A new board is a private GitHub repo with the board kit in it. Claude can set it up with you: you create the repo and the token, Claude adds the board files and checks them.</p>
     <div class="cbtns"><button id="bNewPrompt" type="button" class="primary">📋 Copy new-board prompt for Claude</button></div>
     <div class="hint">Paste it into a new chat with Claude (Claude Code, the desktop app or claude.ai). The steps are in <a href="https://github.com/rain-ventures-ai/co-assets/blob/master/board/kit/NEW-BOARD.md" target="_blank" rel="noopener noreferrer">NEW-BOARD.md</a>. Claude never handles your secrets.</div>
+  </div>
+  <div id="panelAlerts" role="tabpanel" aria-labelledby="tabAlerts" hidden>
+    <p class="hint" style="margin-top:0">Desktop notifications when someone else changes the board. They work while the board is open in a tab (a background or pinned tab is fine). Your own changes never alert you; your agents' changes do if you tick "Updates from my agents". Kept in this browser only.</p>
+    <label class="chk big"><input type="checkbox" id="alOn"> Alerts on</label>
+    <div id="alPerm" class="hint"></div>
+    <div><label for="alPreset">Alert me about</label><select id="alPreset"><option value="tagged">Only when I am tagged or assigned</option><option value="me">Me: tags, my cards and my agents</option><option value="all">Everything</option><option value="custom">Custom (ticks below)</option><option value="off">Nothing</option></select></div>
+    <div id="alKinds" class="alkinds"></div>
+    <div class="cbtns"><button id="alTest" type="button">🔔 Send a test alert</button></div>
+    <div class="hint">"My cards" are cards assigned to you. Your agents are entries by <code>claude@you</code> or <code>codex@you</code>. The page checks for changes about every 30 seconds.</div>
   </div>
   <div id="panelChecks" role="tabpanel" aria-labelledby="tabChecks" hidden>
     <p class="hint" style="margin-top:0">Tests each step for the board that is open now (or, from Connection → Test connection, the values you typed): settings, token, repository, branch, board file, write access, board tools and the GitHub rate limit. It tells you which step fails and what to do.</p>
