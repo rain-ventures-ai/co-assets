@@ -130,20 +130,21 @@
       headers: { Authorization: `Bearer ${c.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cond && etag ? { 'If-None-Match': etag } : {}) } });
   }
 
+  let lastProblem = '';   // shown in Settings → Checks
   async function load(quiet) {
     const c = cfg();
-    if (!c.token) { setStatus('Not connected. Open Settings.', 'err'); render(); return false; }
+    if (!c.token) { setStatus('Not connected. Open Settings.', 'err'); render(); noTokenBox(); return false; }
     if (!quiet) setStatus('Loading…');
     try {
       const res = await gh('GET', null, !!quiet);   // background polls are conditional: a 304 is free and does not count against the rate limit
       if (res.status === 304) { setStatus('Synced ' + new Date().toLocaleTimeString() + ' (no changes)', 'ok'); return true; }
       if (res.status === 404) { await diagnose404(); return false; }
-      if (res.status === 401 || res.status === 403) { setStatus('Token rejected or lacks access', 'err'); return false; }
-      if (!res.ok) { setStatus(`GitHub error ${res.status}`, 'err'); return false; }
+      if (res.status === 401 || res.status === 403) { lastProblem = `Loading the board: GitHub said ${res.status} (token rejected or no access)`; setStatus('Token rejected or lacks access', 'err'); return false; }
+      if (!res.ok) { lastProblem = `Loading the board: GitHub error ${res.status}`; setStatus(`GitHub error ${res.status}`, 'err'); return false; }
       const data = await res.json(); sha = data.sha; etag = res.headers.get('ETag'); const raw = JSON.parse(b64d(data.content));
       newerSchema = Number.isInteger(raw.version) && raw.version > KNOWN_SCHEMA ? raw.version : 0; state = normalise(raw); checkKit(); lastSyncOk = true; initSeen(); setTimeout(openFromHash, 30);
       setStatus('Synced ' + new Date().toLocaleTimeString(), 'ok'); render(); return true;
-    } catch (e) { console.error(e); setStatus('Network or parse error', 'err'); return false; }
+    } catch (e) { console.error(e); lastProblem = 'Loading the board: ' + (e && e.message || e); setStatus('Network or parse error', 'err'); return false; }
   }
 
   // ---- board kit: is this repo's copy of the shared tools older than the kit published with this page? ----
@@ -190,14 +191,27 @@
     if (!repoOk) {
       setStatus('Repo not found / no access', 'err');
       box.append(el('p', null, `Cannot see repository "${c.repo}" with this token.`), el('p', null, 'Check: (1) the repo name in Settings, (2) the token was created with "Only select repositories" including this repo (or the right owner), (3) Contents: Read and write, (4) the token has not expired.'));
+      lastProblem = `Cannot see repository "${c.repo}" with this token`;
+      const near = await nearRepos(c.repo); if (near.length) { const p = el('p', null, 'This token can see: '); near.forEach(r => { const x = el('button', 'small', r); x.onclick = () => switchRepo(r); p.append(x, document.createTextNode(' ')); }); box.append(p); }
     } else {
-      setStatus(`${c.path} not found`, 'err');
+      setStatus(`${c.path} not found`, 'err'); lastProblem = `"${c.path}" not found on branch "${c.branch}"`;
       box.append(el('p', null, `The repo is reachable, but "${c.path}" does not exist on branch "${c.branch}".`), el('p', null, 'Check the file path and branch in Settings (for our team board the path is board/tasks.json).'));
       const b = el('button', null, 'Create a new empty board at this path…');
       b.onclick = async () => { if (!confirm(`Create ${c.path} on ${c.branch} in ${c.repo}?`)) return; state = DEFAULT(); sha = null; await save(clone(state), 'Create board file'); render(); };
       box.append(b);
     }
+    const ck = el('button', null, '🩺 Run checks'); ck.onclick = () => { $('btnSettings').click(); settingsTab('checks'); runChecks(); }; box.append(ck);
     board.append(box);
+  }
+  function noTokenBox() {   // e.g. a ?repo= link to a board this browser has no token for
+    const c = cfg(); if (!c.repo) return; const board = $('board'); board.textContent = ''; board.className = ''; const box = el('div', 'empty');
+    lastProblem = `No token saved for "${c.repo}" in this browser`;
+    box.append(el('p', null, `This browser has no token for "${c.repo}".`), el('p', null, 'Each board needs its own token. If the name is wrong, open one of your boards below.'));
+    const others = Object.keys(boardsMap()).filter(r => r !== c.repo && boardsMap()[r].token);
+    if (others.length) { const p = el('p'); others.forEach(r => { const x = el('button', 'small', r); x.onclick = () => switchRepo(r); p.append(x, document.createTextNode(' ')); }); box.append(p); }
+    const add = el('button', 'primary', 'Add a token for ' + c.repo); add.onclick = () => { $('btnSettings').click(); settingsTab('conn'); };
+    const ck = el('button', null, '🩺 Run checks'); ck.onclick = () => { $('btnSettings').click(); settingsTab('checks'); runChecks(); };
+    box.append(add, document.createTextNode(' '), ck); board.append(box);
   }
   function offerCreate() {
     const board = $('board'); board.textContent = ''; const box = el('div', 'empty');
@@ -1480,8 +1494,56 @@
   setTimeout(sweepClaudeJobs, 5000);
 
   // ---- settings ---------------------------------------------------------------
+  // ---- Settings → Checks: test each step of the connection and say what is wrong (never shows the token) ----------
+  const ghGet = (path, accept, c = cfg()) => fetch(c.api + path, { cache: 'no-store', headers: { ...(c.token ? { Authorization: `Bearer ${c.token}` } : {}), Accept: accept || 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' } });
+  async function tokenRepos(c = cfg()) { try { const r = await ghGet('/user/repos?per_page=100&sort=updated', null, c); return r.ok ? (await r.json()).map(x => x.full_name) : []; } catch { return []; } }
+  async function nearRepos(repo, c = cfg()) {   // repos this token can see, closest names first (same owner, then shared words)
+    if (!c.token) return []; const all = await tokenRepos(c), [o, n] = String(repo).toLowerCase().split('/'), words = String(n || '').split(/[-_.]/).filter(Boolean);
+    const score = r => { const [ro, rn] = r.toLowerCase().split('/'); return (ro === o ? 2 : 0) + words.filter(w => rn.includes(w)).length; };
+    return all.filter(r => r.toLowerCase() !== String(repo).toLowerCase()).sort((a, b) => score(b) - score(a)).slice(0, 5);
+  }
+  function switchRepo(r) { activateBoard(r); if (!cfg().token) { toast('Add a token for ' + r + ' in Settings → Connection', true); $('btnSettings').click(); settingsTab('conn'); return; } location.href = boardUrl(); }
+  let lastReport = '';
+  async function runChecks(over) {   // over: values typed in Connection but not saved yet
+    const c = Object.assign(cfg(), over || {}), out = $('ckList'), rows = []; out.textContent = ''; $('ckRun').disabled = true;
+    const add = (ok, title, detail, fix) => { rows.push({ ok, title, detail, fix }); const li = el('li', 'ck ' + (ok === true ? 'ok' : ok === false ? 'bad' : 'warn'));
+      li.append(el('span', 'ckic', ok === true ? '✓' : ok === false ? '✗' : '!'), el('b', null, title)); if (detail) li.append(el('div', 'ckd', detail)); if (fix) li.append(fix); out.append(li); return li; };
+    try {
+      add(REPO_RE.test(c.repo), 'Repository name', c.repo || '(empty)');
+      add(c.path ? true : false, 'Branch and file', `${c.branch} · ${c.path}`);
+      add(c.me ? true : null, 'Your GitHub username', c.me || 'Not set. Edits and comments show as "someone".');
+      if (!c.token) { add(false, 'Access token', 'No token is saved for this board in this browser. Each board needs its own token.'); return; }
+      let login = '';
+      try { const r = await ghGet('/user', null, c); if (r.ok) { login = (await r.json()).login; const exp = r.headers.get('github-authentication-token-expiration');
+          add(true, 'Token works', `Signed in as @${login}${exp ? ' · expires ' + exp : ''}`); if (c.me && login.toLowerCase() !== c.me.toLowerCase()) add(null, 'Username differs from token', `The token belongs to @${login}, but Settings says @${c.me}.`); }
+        else add(false, 'Token works', r.status === 401 ? 'GitHub rejected the token (401). It is wrong, revoked or expired. Make a new one in Settings → Connection.' : `GitHub said ${r.status}.`); } catch (e) { add(false, 'Reach GitHub', 'No connection to api.github.com: ' + (e.message || e)); return; }
+      const rr = await ghGet(`/repos/${c.repo}`, null, c);
+      if (!rr.ok) {
+        const near = await nearRepos(c.repo, c), fix = el('div', 'ckfix');
+        if (near.length) { fix.append(document.createTextNode('This token can see: ')); near.forEach(r => { const x = el('button', 'small', r); x.type = 'button'; x.onclick = () => switchRepo(r); fix.append(x, document.createTextNode(' ')); }); }
+        add(false, 'Repository access', `The token cannot see "${c.repo}" (GitHub said ${rr.status}). Check the spelling, or edit the token on GitHub and add this repo under "Only select repositories".` + (near.length ? '' : ' The token can see no repositories at all.'), near.length ? fix : null);
+        return;
+      }
+      const repo = await rr.json(); add(true, 'Repository access', `${repo.full_name} · ${repo.private ? 'private' : 'public'} · default branch ${repo.default_branch}`);
+      const br = await ghGet(`/repos/${c.repo}/branches/${encodeURIComponent(c.branch)}`, null, c);
+      if (!br.ok) { add(false, 'Branch', `Branch "${c.branch}" does not exist. The default branch is "${repo.default_branch}".`); return; } add(true, 'Branch', c.branch);
+      const fr = await ghGet(`/repos/${c.repo}/contents/${c.path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(c.branch)}`, null, c);
+      if (!fr.ok) { add(false, 'Board file', `"${c.path}" is not on ${c.branch} (GitHub said ${fr.status}).`); return; }
+      try { const d = await fr.json(), raw = JSON.parse(b64d(d.content)); add(Number.isInteger(raw.version) && raw.version > KNOWN_SCHEMA ? false : true, 'Board file', `${(raw.tasks || []).length} tasks · ${(raw.people || []).length} people · schema v${raw.version || 1} (this page reads up to v${KNOWN_SCHEMA}) · ${Math.round(d.size / 1024)} KB`); }
+      catch (e) { add(false, 'Board file', 'The file is not valid board JSON: ' + (e.message || e)); return; }
+      const perm = repo.permissions || {}; add(perm.push ? true : null, 'Write access', perm.push ? 'Your account can write to this repo. The token also needs Contents: Read and write; a save shows "Token rejected" if it does not.' : 'Your account cannot push to this repo, so saves will fail.');
+      try { const want = (await (await fetch('kit/manifest.json', { cache: 'no-store' })).json()).version, dir = c.path.includes('/') ? c.path.slice(0, c.path.lastIndexOf('/') + 1) : '';
+        const kr = await ghGet(`/repos/${c.repo}/contents/${dir}KIT_VERSION?ref=${encodeURIComponent(c.branch)}`, 'application/vnd.github.raw+json', c), have = kr.ok ? parseInt(await kr.text(), 10) || 0 : 0;
+        add(have >= want ? true : null, 'Board tools (kit)', have >= want ? `v${have}, current` : `v${have} in the repo, v${want} is the latest. The upgrade owner gets an upgrade card.`); } catch { add(null, 'Board tools (kit)', 'Could not read the kit version.'); }
+      try { const rl = await ghGet('/rate_limit', null, c); if (rl.ok) { const x = (await rl.json()).resources.core; add(x.remaining > 50 ? true : null, 'GitHub rate limit', `${x.remaining} of ${x.limit} calls left this hour`); } } catch {}
+    } finally {
+      if (lastProblem && !over) add(null, 'Last problem on this page', lastProblem);
+      const ua = navigator.userAgent; lastReport = [`Board checks · ${new Date().toISOString()} · page ${loadedVersion()}`, `repo ${c.repo} · branch ${c.branch} · path ${c.path} · user ${c.me || '-'}`, ...rows.map(r => `${r.ok === true ? 'OK  ' : r.ok === false ? 'FAIL' : 'WARN'} ${r.title}: ${r.detail || ''}`), `browser ${ua}`].join('\n');
+      $('ckCopy').hidden = false; $('ckRun').disabled = false;
+    }
+  }
   function settingsTab(name) {
-    const ids = { general: ['panelGeneral', 'tabGeneral'], conn: ['panelConn', 'tabConn'], claude: ['panelClaude', 'tabClaude'], boards: ['panelBoards', 'tabBoards'] };
+    const ids = { general: ['panelGeneral', 'tabGeneral'], conn: ['panelConn', 'tabConn'], claude: ['panelClaude', 'tabClaude'], boards: ['panelBoards', 'tabBoards'], checks: ['panelChecks', 'tabChecks'] };
     Object.keys(ids).forEach(n => { const on = n === name; $(ids[n][0]).hidden = !on; $(ids[n][1]).setAttribute('aria-selected', String(on)); });
     if (name === 'conn') setTimeout(() => $('sRepo').focus(), 30);
     if (name === 'boards') renderBoards();
@@ -1489,6 +1551,10 @@
       const mine = myAgents(); $('sUseClaude').checked = mine.includes('claude'); $('sUseCodex').checked = mine.includes('codex'); showAgentBoxes(); }
   }
   document.querySelectorAll('.stabs button').forEach(b => { b.onclick = () => settingsTab(b.dataset.tab); });
+  $('ckRun').onclick = () => runChecks();
+  $('sTest').onclick = () => { const repo = $('sRepo').value.trim(), typed = $('sToken').value.trim(), same = repo === cfg().repo;
+    const over = { repo, branch: $('sBranch').value.trim() || 'master', path: $('sPath').value.trim() || 'board/tasks.json', me: $('sMe').value.trim(), token: typed || (same ? cfg().token : (boardsMap()[repo] || {}).token || '') };
+    settingsTab('checks'); runChecks(over); }; $('ckCopy').onclick = () => copyText(lastReport, 'Check report copied (it has no token in it)');
   $('sClose').onclick = $('sDone').onclick = () => $('dlgSettings').close();
   $('btnSettings').onclick = () => { const c = cfg(); $('sVer').textContent = loadedVersion(); settingsTab(c.token ? 'general' : 'conn'); $('sRepo').value = c.repo; $('sBranch').value = c.branch; $('sPath').value = c.path; $('sMe').value = c.me; $('sToken').value = ''; $('sToken').placeholder = c.token ? '(token saved — leave blank to keep)' : 'github_pat_...'; $('dlgSettings').showModal(); };
   const patUrl = () => { const owner = ($('sRepo').value.trim().split('/')[0] || '');
@@ -1568,5 +1634,5 @@
   $('sTheme').value = window.kbTheme ? window.kbTheme.get() : 'auto';
   $('sTheme').onchange = e => window.kbTheme && window.kbTheme.set(e.target.value);
   render();
-  if (cfg().token) load(); else { setStatus('Not connected. Open Settings.', 'err'); $('btnSettings').click(); }
+  if (cfg().token) load(); else { load(); $('btnSettings').click(); }
 })();

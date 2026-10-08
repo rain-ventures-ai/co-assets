@@ -65,6 +65,7 @@
     <button id="tabConn" role="tab" aria-selected="false" data-tab="conn">Connection</button>
     <button id="tabClaude" role="tab" aria-selected="false" data-tab="claude">Agents</button>
     <button id="tabBoards" role="tab" aria-selected="false" data-tab="boards">Boards</button>
+    <button id="tabChecks" role="tab" aria-selected="false" data-tab="checks">Checks</button>
   </div>
 
   <div id="panelGeneral" role="tabpanel" aria-labelledby="tabGeneral">
@@ -91,7 +92,7 @@
     <div class="hint">Recorded as the author of your edits and comments, and used for unread markers and the default assignee.</div>
     <label for="sToken">Fine-grained personal access token</label><input id="sToken" type="password" autocomplete="off" placeholder="github_pat_..."><div class="fldbtns"><button type="button" class="small" data-copy="sToken">📋 Copy</button><button type="button" class="small" data-show="sToken" aria-pressed="false">👁 Show</button></div>
     <div class="hint"><a id="patLink" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Create a fine-grained token on GitHub &rarr;</a> (the link pre-fills the name, expiry and <b>Contents: Read and write</b> plus <b>Issues: Read and write</b>, needed for the Create issue button). Choose <b>Only select repositories</b> and pick just the repo that holds your board file. If the repo belongs to an organisation, set <b>Resource owner</b> to that organisation. The token is kept only in this browser (localStorage) and is sent only to api.github.com.</div>
-    <div class="actions"><button id="sForget" class="danger">Forget token</button><span class="spacer"></span><button id="sCancel">Cancel</button><button id="sSave" class="primary">Save &amp; connect</button></div>
+    <div class="actions"><button id="sForget" class="danger">Forget token</button><span class="spacer"></span><button id="sTest" type="button">🩺 Test connection</button><button id="sCancel">Cancel</button><button id="sSave" class="primary">Save &amp; connect</button></div>
   </div>
   <div id="panelBoards" role="tabpanel" aria-labelledby="tabBoards" hidden>
     <p class="hint" style="margin-top:0">The boards this browser knows. Each board is its own GitHub repo, with its own token and Claude routine, kept only in this browser. The menu next to the logo switches between them.</p>
@@ -102,6 +103,12 @@
     <p class="hint">A new board is a private GitHub repo with the board kit in it. Claude can set it up with you: you create the repo and the token, Claude adds the board files and checks them.</p>
     <div class="cbtns"><button id="bNewPrompt" type="button" class="primary">📋 Copy new-board prompt for Claude</button></div>
     <div class="hint">Paste it into a new chat with Claude (Claude Code, the desktop app or claude.ai). The steps are in <a href="https://github.com/rain-ventures-ai/co-assets/blob/master/board/kit/NEW-BOARD.md" target="_blank" rel="noopener noreferrer">NEW-BOARD.md</a>. Claude never handles your secrets.</div>
+  </div>
+  <div id="panelChecks" role="tabpanel" aria-labelledby="tabChecks" hidden>
+    <p class="hint" style="margin-top:0">Tests each step for the board that is open now (or, from Connection → Test connection, the values you typed): settings, token, repository, branch, board file, write access, board tools and the GitHub rate limit. It tells you which step fails and what to do.</p>
+    <div class="cbtns"><button id="ckRun" type="button" class="primary">🩺 Run checks</button><button id="ckCopy" type="button" hidden>📋 Copy report</button></div>
+    <ol id="ckList" class="cklist"></ol>
+    <div class="hint">The report never contains your token. Paste it to Claude or a teammate if you need help.</div>
   </div>
   <div id="panelClaude" role="tabpanel" aria-labelledby="tabClaude" hidden>
     <p class="hint" style="margin-top:0">Choose the AI agents <b>you</b> use. Only these are offered when you type <b>@</b>. Each person chooses their own; the choice and any keys stay in this browser (like the GitHub token) and travel with "Copy settings code".</p>
