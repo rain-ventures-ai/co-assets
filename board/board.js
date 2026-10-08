@@ -27,7 +27,7 @@
     else { if (repo && REPO_RE.test(repo) && !cur) LS.set('kb_repo', repo); Object.keys(over).forEach(k => { if (!LS.get('kb_' + k)) LS.set('kb_' + k, over[k]); }); }
     stashBoard(); })();
   // ---- move settings between browsers/devices: one pasteable code or a setup link (token included) --------------
-  const XFER = { text: ['repo', 'branch', 'path', 'me', 'token', 'collapsed', 'undated', 'tab', 'claude_url', 'claude_token', 'cron_key', 'agents', 'boards'], pick: { theme: ['auto', 'light', 'dark', 'midnight', 'sand'], style: ['classic', 'colorful'], view: ['board', 'list', 'cal', 'sched'] } };
+  const XFER = { text: ['repo', 'branch', 'path', 'me', 'token', 'collapsed', 'undated', 'tab', 'claude_url', 'claude_token', 'cron_key', 'agents', 'boards'], pick: { theme: ['auto', 'light', 'dark', 'midnight', 'sand'], style: ['classic', 'colorful'], view: ['board', 'list', 'cal', 'sched', 'activity'] } };
   const xEnc = o => { const b = new TextEncoder().encode(JSON.stringify(o)); let s = ''; b.forEach(c => s += String.fromCharCode(c)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
   const xDec = t => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))));
   function exportCode() { const o = {}; XFER.text.concat(Object.keys(XFER.pick)).forEach(k => { const v = LS.get('kb_' + k, null); if (v !== null && v !== '') o[k] = v; }); return 'kbcfg1.' + xEnc(o); }
@@ -483,7 +483,7 @@
     document.body.dataset.view = view; syncViewSw();
     if (view !== 'board') {
       const board = $('board'), st = board.scrollTop; board.className = 'v-' + view; board.textContent = '';
-      ({ list: renderList, cal: renderCal, sched: renderSched })[view](); board.scrollTop = st; renderLegend(); renderStats();
+      ({ list: renderList, cal: renderCal, sched: renderSched, activity: renderActivity })[view](); board.scrollTop = st; renderLegend(); renderStats();
       if ($('dlgCard').open) refreshDrawer(); return;
     }
     const board = $('board'); board.className = ''; board.textContent = ''; const hideDone = $('fHideDone').checked;
@@ -732,7 +732,7 @@
   setInterval(() => { if ($('dlgCard').open && !busy && !document.hidden && lastSyncOk) load(true); }, 10000);   // near-live while a conversation is open (304s are free)
 
   // ---- views: board (columns), list (grouped rows) and calendar (month by due date) -------------------
-  let view = LS.get('kb_view', 'board'); if (!['board', 'list', 'cal', 'sched'].includes(view)) view = 'board';
+  let view = LS.get('kb_view', 'board'); if (!['board', 'list', 'cal', 'sched', 'activity'].includes(view)) view = 'board';
   const setView = v => { view = v; LS.set('kb_view', v); render(); };
   const syncViewSw = () => document.querySelectorAll('#viewSw button').forEach(b => { const on = b.dataset.view === view; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
   const pad2 = n => String(n).padStart(2, '0'), isoDay = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`, todayIso = () => isoDay(new Date());
@@ -842,6 +842,161 @@
     const und = el('details', 'calundated'); und.open = LS.get('kb_undated', '') === '1'; und.addEventListener('toggle', () => LS.set('kb_undated', und.open ? '1' : ''));
     und.append(el('summary', null, `No due date (${undated.length})`)); undated.forEach(t => und.append(item(t))); wrap.append(und);
     board.append(wrap);
+  }
+
+  // ---- activity: what happened on the board in a day range, by whom (a person and their agents, or agents only) ----------
+  // A card counts as worked on when someone logged a history entry or a comment on it in the range. History "by" is the
+  // GitHub user for changes made on this page, and "agent@user" (e.g. claude@osouthgate) for changes made by that person's agent.
+  let actRange = LS.get('kb_act_range', 'today'), actDay = todayIso(), actWho = LS.get('kb_act_who', '__me'), actAgents = LS.get('kb_act_agents', '1') !== '';
+  const AGENT_BY = /@|^(claude|codex|cli)$/i;
+  const fmtDay = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  const fmtTime = iso => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const fmtStamp = iso => { const d = new Date(iso); return isNaN(d) ? String(iso || '') : isoDay(d) + ' ' + fmtTime(iso); };
+  function actSpan() {   // [from, to) in local time, plus a label
+    const mid = new Date(); mid.setHours(0, 0, 0, 0); const day = 864e5, t0 = mid.getTime();
+    if (actRange === 'yday') return { from: t0 - day, to: t0, label: 'Yesterday (' + fmtDay(isoDay(new Date(t0 - day))) + ')' };
+    if (actRange === '7d') return { from: t0 - 6 * day, to: t0 + day, label: 'Last 7 days (' + fmtDay(isoDay(new Date(t0 - 6 * day))) + ' to ' + fmtDay(isoDay(mid)) + ')' };
+    if (actRange === 'day') { const d = new Date(actDay + 'T00:00:00'); if (!isNaN(d)) return { from: d.getTime(), to: d.getTime() + day, label: fmtDay(actDay) }; }
+    return { from: t0, to: t0 + day, label: 'Today (' + fmtDay(isoDay(mid)) + ')' };
+  }
+  const actPerson = () => (actWho === '__me' ? (cfg().me || '') : actWho).toLowerCase();
+  function actWhoLabel() {
+    if (actWho === '__agents') return 'agents only';
+    const p = actPerson(); if (!p) return actAgents ? 'everyone' : 'people only (no agents)';
+    return '@' + p + (actAgents ? ' and their agents' : ' only');
+  }
+  function actMatch(by) {
+    const a = String(by || '').toLowerCase(), agent = AGENT_BY.test(a);
+    if (actWho === '__agents') return agent;
+    if (!actAgents && agent) return false;
+    const p = actPerson(); return !p || a === p || a.endsWith('@' + p);
+  }
+  function isDoneEntry(h) {   // "done" from board.py, or a move into the done column from this page or board.py
+    const x = String(h.text || ''); if (/^done(\b|$)/i.test(x)) return true;
+    const m = x.match(/^moved .*?(?:→|->)\s*([^:]+)/); if (!m) return false;
+    const to = m[1].trim().toLowerCase(), dc = doneColId(); return to === String(dc).toLowerCase() || to === String(colName(dc)).toLowerCase();
+  }
+  function activityData() {
+    const sp = actSpan(), inR = x => { const ms = Date.parse(x.at); return ms >= sp.from && ms < sp.to && actMatch(x.by); };
+    const cards = [], days = new Map(); let comments = 0;
+    state.tasks.filter(filtered).forEach(t => {
+      const ev = t.history.filter(inR).map(h => ({ at: h.at, by: h.by, text: h.text, done: isDoneEntry(h) }))
+        .concat(t.comments.filter(inR).map(c => ({ at: c.at, by: c.by, text: c.text, comment: true })))
+        .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+      if (!ev.length) return;
+      comments += ev.filter(e => e.comment).length;
+      cards.push({ t, done: ev.some(e => e.done), last: ev[ev.length - 1].at });
+      ev.forEach(e => { const k = isoDay(new Date(e.at)); if (!days.has(k)) days.set(k, new Map()); const m = days.get(k); if (!m.has(t.id)) m.set(t.id, { t, ev: [] }); m.get(t.id).ev.push(e); });
+    });
+    const order = [...days.keys()].sort().reverse().map(k => ({ day: k, cards: [...days.get(k).values()].sort((a, b) => (a.ev[a.ev.length - 1].at < b.ev[b.ev.length - 1].at ? 1 : -1)) }));
+    return { span: sp, cards, done: cards.filter(c => c.done).map(c => c.t), comments, days: order };
+  }
+  const cardSub = t => [colName(t.column), t.client, t.assignees.map(a => '@' + a).join(' ')].filter(Boolean).join(' · ');
+
+  function renderActivity() {
+    const board = $('board'), wrap = el('div', 'act'), bar = el('div', 'calbar actbar');
+    const seg = el('div', 'seg actseg');
+    [['today', 'Today'], ['yday', 'Yesterday'], ['7d', '7 days'], ['day', 'Pick a day']].forEach(([v, l]) => {
+      const b = el('button', actRange === v ? 'on' : '', l); b.type = 'button'; b.setAttribute('aria-pressed', String(actRange === v));
+      b.onclick = () => { actRange = v; LS.set('kb_act_range', v); render(); }; seg.append(b); });
+    bar.append(seg);
+    if (actRange === 'day') { const di = el('input'); di.type = 'date'; di.value = actDay; di.max = todayIso(); di.setAttribute('aria-label', 'Day'); di.onchange = () => { if (di.value) { actDay = di.value; render(); } }; bar.append(di); }
+    const ws = el('select'); ws.setAttribute('aria-label', 'Whose activity');
+    [['__me', 'Me' + (cfg().me ? ' (@' + cfg().me + ')' : '')], ['', 'Everyone'], ...state.people.filter(p => p.github.toLowerCase() !== (cfg().me || '').toLowerCase()).map(p => [p.github, '@' + p.github]), ['__agents', 'Agents only']]
+      .forEach(([v, l]) => { const o = el('option', null, l); o.value = v; ws.append(o); });
+    ws.value = actWho; if (ws.value !== actWho) { ws.value = '__me'; actWho = '__me'; }
+    ws.onchange = () => { actWho = ws.value; LS.set('kb_act_who', actWho); render(); };
+    const ag = el('label', 'chk'), agc = el('input'); agc.type = 'checkbox'; agc.checked = actAgents; agc.disabled = actWho === '__agents';
+    agc.onchange = () => { actAgents = agc.checked; LS.set('kb_act_agents', actAgents ? '1' : ''); render(); }; ag.append(agc, document.createTextNode(' Include agents'));
+    const cp = el('button', 'primary', '📋 Copy as Markdown'); cp.type = 'button'; cp.onclick = copyMarkdown;
+    bar.append(ws, ag, el('span', 'spacer'), cp); wrap.append(bar);
+
+    const a = activityData();
+    const sum = el('div', 'actsum'); sum.append(el('b', null, a.span.label), document.createTextNode(' · ' + actWhoLabel()));
+    const nums = el('div', 'actnums'); [[a.cards.length, 'cards worked on'], [a.done.length, 'completed'], [a.comments, 'comments']].forEach(([n, l]) => { const s = el('span', 'actnum'); s.append(el('b', null, String(n)), document.createTextNode(' ' + l)); nums.append(s); });
+    sum.append(nums); wrap.append(sum);
+    if (!cfg().me && actWho === '__me') wrap.append(el('div', 'snone', 'Set your GitHub username in Settings to see your own activity. Showing everyone.'));
+    if (!a.cards.length) { wrap.append(el('div', 'emptycol', 'No activity in this range' + (filterDesc() ? ' with these filters.' : '.'))); board.append(wrap); return; }
+    if (a.done.length) {
+      const sec = el('section', 'actsec actdone'); sec.append(el('h3', null, `✓ Completed (${a.done.length})`));
+      a.done.forEach(t => { const r = el('button', 'actcard'); r.type = 'button'; r.append(el('span', 'numchip', '#' + t.num), el('span', 'acttitle', t.title), el('span', 'ssub', t.client || '')); r.onclick = () => openCard(t.id); sec.append(r); });
+      wrap.append(sec);
+    }
+    a.days.forEach(d => {
+      const sec = el('section', 'actsec'); sec.append(el('h3', null, fmtDay(d.day)));
+      d.cards.forEach(({ t, ev }) => {
+        const box = el('div', 'actitem'), head = el('button', 'actcard'); head.type = 'button';
+        head.append(el('span', 'numchip', '#' + t.num), el('span', 'acttitle', t.title), el('span', 'ssub', cardSub(t))); head.onclick = () => openCard(t.id);
+        const ol = el('ol', 'actlog');
+        ev.forEach(e => { const li = el('li', (e.comment ? 'cm' : '') + (e.done ? ' dn' : '')), tm = el('time', null, fmtTime(e.at)); tm.title = e.at;
+          const who = el('b', AGENT_BY.test(String(e.by || '')) ? 'agent' : '', ' ' + (e.by || '?') + ' ');
+          li.append(tm, who); if (e.comment) li.append(el('span', 'cmic', '💬 ')); linkify(li, e.text); ol.append(li); });
+        box.append(head, ol); sec.append(box);
+      });
+      wrap.append(sec);
+    });
+    board.append(wrap);
+  }
+
+  // ---- copy as Markdown: everything the current view shows (filters applied), with every detail of each card ----------
+  function filterDesc() {
+    const out = [], fc = $('fClient').value, fw = $('fWho').value, fl = $('fLabel').value, fp = $('fPrio').value;
+    if (fc) out.push('client ' + fc);
+    if (fw) out.push(fw === '__none' ? 'unassigned' : fw === '__agent' ? 'claimed by an agent' : 'assigned to @' + fw);
+    if (fl) out.push('label ' + fl); if (fp) out.push('priority ' + fp);
+    if ($('fAttn').checked) out.push('needs attention'); if (freshOnly) out.push('new for me');
+    if ($('fHideDone').checked && view !== 'activity') out.push('done hidden');
+    return out.join(', ');
+  }
+  const mdIndent = s => String(s || '').replace(/\r/g, '').split('\n').join('\n  ');
+  const mdLine = s => String(s || '').replace(/\r?\n+/g, ' ');
+  function taskMarkdown(t) {
+    const L = [`### #${t.num} ${mdLine(t.title)}`, ''];
+    const meta = [`**Status:** ${colName(t.column)}`, `**Priority:** ${t.priority || 'medium'}`, t.due && `**Due:** ${t.due}`, t.client && `**Client:** ${t.client}`].filter(Boolean);
+    L.push('- ' + meta.join(' · '));
+    if (t.assignees.length) L.push('- **Assigned:** ' + t.assignees.map(a => '@' + a).join(', '));
+    if (t.labels.length) L.push('- **Labels:** ' + t.labels.join(', '));
+    const run = (k, lbl) => L.push(`- **${lbl}:** ` + [k.agent, k.on_behalf_of && 'for @' + k.on_behalf_of, claimState(k), k.note && '"' + mdLine(k.note) + '"', k.session_url].filter(Boolean).join(' · '));
+    if (t.claim && t.claim.status !== 'done') run(t.claim, 'Agent'); else if (t.last_run || t.claim) run(t.last_run || t.claim, 'Last run');
+    L.push('- **Created:** ' + [fmtStamp(t.created), t.createdBy && 'by ' + t.createdBy].filter(Boolean).join(' ') + ' · **Updated:** ' + [fmtStamp(t.updated), t.updatedBy && 'by ' + t.updatedBy].filter(Boolean).join(' '));
+    if ((t.details || '').trim()) L.push('', t.details.trim());
+    if (t.todos.length) { L.push('', `**Checklist (${t.todos.filter(d => d.done).length}/${t.todos.length})**`); t.todos.forEach(d => L.push(`- [${d.done ? 'x' : ' '}] ${mdLine(d.text)}`)); }
+    if (t.links.length) { L.push('', '**Links**'); t.links.forEach(l => L.push(`- [${mdLine(l.title || l.url)}](${l.url})`)); }
+    if (t.contacts.length) { L.push('', '**Contacts**'); t.contacts.forEach(k => L.push('- ' + [k.name, k.role, k.email, k.phone].filter(Boolean).join(' | '))); }
+    if (t.comments.length) { L.push('', `**Comments (${t.comments.length})**`); t.comments.forEach(c => L.push(`- ${fmtStamp(c.at)} · ${c.by || '?'}: ${mdIndent(c.text)}`)); }
+    if (t.history.length) { L.push('', `**History (${t.history.length})**`); t.history.forEach(h => L.push(`- ${fmtStamp(h.at)} · ${h.by || '?'}: ${mdLine(h.text)}`)); }
+    L.push(''); return L.join('\n');
+  }
+  function activityMarkdown() {
+    const a = activityData(), f = filterDesc(), L = [`# Activity: ${a.span.label}`, '', `_${cfg().repo} · ${actWhoLabel()}${f ? ' · filters: ' + f : ''} · copied ${fmtStamp(new Date().toISOString())}_`, '',
+      `**${a.cards.length} cards worked on · ${a.done.length} completed · ${a.comments} comments**`, ''];
+    if (!a.cards.length) { L.push('No activity in this range.'); return L.join('\n'); }
+    if (a.done.length) { L.push('## Completed', ''); a.done.forEach(t => L.push(`- #${t.num} ${mdLine(t.title)}${t.client ? ' (' + t.client + ')' : ''}`)); L.push(''); }
+    a.days.forEach(d => {
+      L.push(`## ${fmtDay(d.day)}`, '');
+      d.cards.forEach(({ t, ev }) => {
+        L.push(`### #${t.num} ${mdLine(t.title)}`, `_${cardSub(t)}_`, '');
+        ev.forEach(e => L.push(`- ${fmtTime(e.at)} · ${e.by || '?'}${e.comment ? ' 💬' : ''}: ${e.comment ? mdIndent(e.text) : mdLine(e.text)}`));
+        L.push('');
+      });
+    });
+    return L.join('\n');
+  }
+  function boardMarkdown() {
+    const hideDone = $('fHideDone').checked, f = filterDesc(), names = { board: 'Board', list: 'List', cal: 'Calendar', sched: 'Schedule' };
+    const L = [`# Board: ${cfg().repo}`, '', `_${names[view] || 'Board'} view${f ? ' · filters: ' + f : ''} · copied ${fmtStamp(new Date().toISOString())}_`, ''];
+    let n = 0;
+    state.columns.forEach(col => {
+      if (hideDone && col.id === doneColId()) return;
+      const items = state.tasks.filter(t => t.column === col.id && filtered(t)); if (!items.length) return;
+      n += items.length; L.push(`## ${col.name} (${items.length})`, ''); items.forEach(t => L.push(taskMarkdown(t)));
+    });
+    if (!n) L.push('No cards match.');
+    return { text: L.join('\n'), n };
+  }
+  function copyMarkdown() {
+    if (view === 'activity') { copyText(activityMarkdown(), 'Activity copied as Markdown'); return; }
+    const b = boardMarkdown(); copyText(b.text, `${b.n} card${b.n === 1 ? '' : 's'} copied as Markdown`);
   }
 
   let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1), calSel = todayIso();
@@ -1390,6 +1545,8 @@
   $('sMarkAll').onclick = () => { markAllSeen(); render(); toast('All cards marked as read'); };
   $('btnRefresh').onclick = () => load();
   $('btnAgent').onclick = () => copyText(agentPrompt(null), 'Board instructions copied for an agent');
+  $('btnCopyMd').onclick = () => copyMarkdown(); $('fCopyMd').onclick = () => { closePops(); copyMarkdown(); };
+  $('cCopyMd').onclick = () => { const t = taskNow(); if (t) copyText(taskMarkdown(t), 'Card copied as Markdown'); };
   $('btnFilter').onclick = e => { e.stopPropagation(); const pop = $('filterPop'), open = pop.hidden; closePops(); if (open) { placePop(pop); pop.hidden = false; $('btnFilter').setAttribute('aria-expanded', 'true'); } };
   $('filterPop').addEventListener('click', e => e.stopPropagation()); $('clientPop').addEventListener('click', e => e.stopPropagation());
   document.addEventListener('click', closePops); document.addEventListener('keydown', e => { if (e.key === 'Escape') closePops(); });

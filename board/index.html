@@ -13,7 +13,7 @@
     <button id="boardBtn" class="logo boardbadge" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="boardPop" title="Board" aria-label="Board">▦</button>
     <div id="boardPop" class="popover boardpop" hidden></div>
   </div>
-  <div id="viewSw" class="seg" role="group" aria-label="View"><button data-view="board" title="Board"><span class="vi">▦</span><span class="vt"> Board</span></button><button data-view="list" title="List"><span class="vi">☰</span><span class="vt"> List</span></button><button data-view="cal" title="Calendar"><span class="vi">📅</span><span class="vt"> Calendar</span></button><button data-view="sched" title="Schedule"><span class="vi">🗓</span><span class="vt"> Schedule</span></button></div>
+  <div id="viewSw" class="seg" role="group" aria-label="View"><button data-view="board" title="Board"><span class="vi">▦</span><span class="vt"> Board</span></button><button data-view="list" title="List"><span class="vi">☰</span><span class="vt"> List</span></button><button data-view="cal" title="Calendar"><span class="vi">📅</span><span class="vt"> Calendar</span></button><button data-view="sched" title="Schedule"><span class="vi">🗓</span><span class="vt"> Schedule</span></button><button data-view="activity" title="Activity: what was done today, yesterday or on a day you pick"><span class="vi">🕘</span><span class="vt"> Activity</span></button></div>
   <div class="clientwrap">
     <div id="clientBar" class="clientbar" role="group" aria-label="Filter by client"></div>
     <div id="clientPop" class="popover clientpop" hidden></div>
@@ -29,12 +29,13 @@
       <label>Priority <select id="fPrio"><option value="">All</option><option>high</option><option>medium</option><option>low</option></select></label>
       <label class="chk"><input type="checkbox" id="fAttn"> Needs attention <span id="attnCount" class="muted"></span></label>
       <label class="chk"><input type="checkbox" id="fHideDone"> Hide done</label>
-      <div class="popfoot"><button id="fClear" type="button">Clear filters</button></div>
+      <div class="popfoot"><button id="fClear" type="button">Clear filters</button><button id="fCopyMd" type="button" title="Copy every card this view shows, with all details, comments and history">📋 Copy as Markdown</button></div>
     </div>
   </div>
   <div class="hbreak"></div>
   <span id="status">Not connected</span>
   <button id="btnAgent" title="Copy instructions for an AI agent: the board, how to claim and update tasks, and the skill link" aria-label="Copy for agent"><span class="ic">🤖</span><span class="tx"> Copy for agent</span></button>
+  <button id="btnCopyMd" title="Copy as Markdown: every card this view shows (filters applied), with all details, comments and history" aria-label="Copy as Markdown"><span class="ic">📋</span><span class="tx"> Copy</span></button>
   <button id="btnUnread" aria-label="Unread" title="Nothing new"><span class="ic">🔔</span><span id="unreadBadge" class="badge" hidden>0</span></button>
   <button id="btnRefresh" title="Reload from GitHub" aria-label="Refresh"><span class="ic">🔄</span><span class="tx"> Refresh</span></button>
   <button id="btnSettings" aria-label="Settings" title="Settings"><span class="ic">⚙️</span><span class="tx"> Settings</span></button>
@@ -127,7 +128,7 @@
 </dialog>
 
 <dialog id="dlgCard" class="drawer" aria-label="Task details">
-  <div class="dhead"><button id="dNum" type="button" class="numchip big" title="Copy the task reference"></button><button id="dLink" type="button" class="small" title="Copy a link to this task" aria-label="Copy link to this task">🔗</button><span class="spacer"></span><span id="dSaved" class="dsaved" role="status"></span><button id="cIssue" type="button" class="small agentcopy" title="Create a GitHub issue for this task" aria-label="Create GitHub issue"><span aria-hidden="true">🐙</span><span class="atxt"> Create issue</span></button><button id="cAgent" type="button" class="small agentcopy" title="Copy instructions for an AI agent to work on this task: the card, how to claim it, and the skill link" aria-label="Copy for agent"><span aria-hidden="true">🤖</span><span class="atxt"> Copy for agent</span></button><button id="cClose" class="ico" aria-label="Close">✕</button></div>
+  <div class="dhead"><button id="dNum" type="button" class="numchip big" title="Copy the task reference"></button><button id="dLink" type="button" class="small" title="Copy a link to this task" aria-label="Copy link to this task">🔗</button><span class="spacer"></span><span id="dSaved" class="dsaved" role="status"></span><button id="cIssue" type="button" class="small agentcopy" title="Create a GitHub issue for this task" aria-label="Create GitHub issue"><span aria-hidden="true">🐙</span><span class="atxt"> Create issue</span></button><button id="cCopyMd" type="button" class="small agentcopy" title="Copy this card as Markdown, with all details, comments and history" aria-label="Copy card as Markdown"><span aria-hidden="true">📋</span><span class="atxt"> Markdown</span></button><button id="cAgent" type="button" class="small agentcopy" title="Copy instructions for an AI agent to work on this task: the card, how to claim it, and the skill link" aria-label="Copy for agent"><span aria-hidden="true">🤖</span><span class="atxt"> Copy for agent</span></button><button id="cClose" class="ico" aria-label="Close">✕</button></div>
   <div class="dbody" id="cBody">
     <textarea id="cTitle" class="dtitle" rows="1" aria-label="Title" placeholder="Task title"></textarea>
     <div class="dchips">

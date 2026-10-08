@@ -188,7 +188,7 @@ button.cmchip.has { color: var(--accent); background: var(--accent-soft); font-w
 .seg button { border: 0; background: transparent; padding: 4px 11px; font-size: 13px; border-radius: 6px; color: var(--muted); }
 .seg button.on { background: var(--card); color: var(--text); box-shadow: var(--shadow); font-weight: 600; }
 body:not([data-view="board"]) #tabs { display: none !important; }
-#board.v-list, #board.v-cal, #board.v-sched { display: block; overflow-y: auto; padding: 16px 18px 60px; }
+#board.v-list, #board.v-cal, #board.v-sched, #board.v-activity { display: block; overflow-y: auto; padding: 16px 18px 60px; }
 
 /* ---- list view ----------------------------------------------------------- */
 .lsec { max-width: 900px; margin: 0 auto 18px; }
@@ -228,7 +228,7 @@ body:not([data-view="board"]) #tabs { display: none !important; }
 .calundated { margin-top: 18px; } .calundated summary { cursor: pointer; font-weight: 600; color: var(--muted); padding: 6px 0; }
 @media (max-width: 760px) {
   .seg { order: 1; } .seg button { padding: 8px 12px; min-height: 40px; } .vt { display: none; } .vi { font-size: 16px; }
-  #board.v-list, #board.v-cal, #board.v-sched { padding: 8px 12px 90px; }
+  #board.v-list, #board.v-cal, #board.v-sched, #board.v-activity { padding: 8px 12px 90px; }
   .lrow { padding: 12px 2px; } .circ { width: 26px; height: 26px; } .lt { font-size: 15px; } .lrow .ico { min-width: 36px; }
   .calcell { min-height: 54px; padding: 3px; align-items: center; } .pills { display: none; } .dots { display: flex; justify-content: center; }
   .calwd { font-size: 10px; } .caltitle { font-size: 16px; }
@@ -391,13 +391,13 @@ header .logo { flex: 0 0 auto; width: 32px; height: 32px; font-size: 17px; borde
 .attnbtn { flex: 0 0 auto; display: inline-flex; gap: 4px; align-items: center; color: var(--warn); font-weight: 700; background: color-mix(in srgb, var(--warn) 14%, var(--card)); } .attnbtn.on { border-color: var(--warn); }
 .popwrap { position: relative; flex: 0 0 auto; } #btnFilter { position: relative; } #btnFilter .tx { display: inline; }
 .filterpop { right: 0; top: calc(100% + 8px); width: 270px; padding: 12px; } .filterpop label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); margin-bottom: 10px; } .filterpop label.chk { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 13px; } .filterpop select { font-size: 13px; }
-.popfoot { display: flex; justify-content: flex-end; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px; }
+.popfoot { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px; }
 #status { flex: 0 0 auto; } #status.ok { display: none; } #status.err { color: var(--danger); font-weight: 600; }
 header .badge { top: -6px; right: -6px; }
 @media (max-width: 1100px) { .seg .vt { display: none; } .seg button { padding: 4px 9px; } #btnFilter .tx { display: none; } }
 @media (max-width: 760px) {
   header { flex-wrap: wrap; gap: 6px 8px; padding: 6px 10px; }
-  header .logo { display: none; } .seg { order: 1; } #btnUnread { order: 2; margin-left: auto; } #btnAgent { order: 3; } #btnRefresh { order: 4; } #btnSettings { order: 5; } .hbreak { display: block; order: 6; flex-basis: 100%; height: 0; }
+  header .logo { display: none; } .seg { order: 1; } #btnUnread { order: 2; margin-left: auto; } #btnAgent { order: 3; } #btnCopyMd { order: 3; } #btnRefresh { order: 4; } #btnSettings { order: 5; } .hbreak { display: block; order: 6; flex-basis: 100%; height: 0; }
   .clientwrap { order: 7; } .peopleq { display: none; } .attnbtn { order: 8; } .popwrap { order: 9; } #status { order: 12; flex-basis: 100%; font-size: 11.5px; }
   header { gap: 6px; } .seg button { min-height: 40px; min-width: 38px; padding: 6px 8px; } header button { min-height: 40px; min-width: 40px; padding: 4px 6px; } header .seg button { min-width: 38px; }
   .popover { position: fixed; left: 8px; right: 8px; top: 120px; width: auto; max-width: none; } .clientpop { left: 8px !important; } .filterpop { right: 8px; width: auto; }
@@ -509,3 +509,20 @@ header #boardBtn.logo { display: inline-grid; width: auto; min-width: 32px; padd
 .bprow:hover, .bpmanage:hover { background: var(--accent-soft); } .bprow.cur .bpname { font-weight: 700; } .bpname { flex: 1; overflow-wrap: anywhere; } .bpmark { color: var(--accent); }
 .bpmanage { border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; margin-top: 4px; color: var(--muted); font-size: 13px; }
 header .boardwrap { order: 0; }
+
+/* activity view */
+.act { max-width: 900px; margin: 0 auto; }
+.actbar { flex-wrap: wrap; } .actbar select, .actbar input[type=date] { min-height: 32px; } .actbar .chk { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); }
+.actsum { padding: 10px 12px; border-radius: 10px; background: var(--panel); margin-bottom: 12px; font-size: 14px; }
+.actnums { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 6px; color: var(--muted); } .actnum b { color: var(--text); font-size: 18px; }
+.actsec { border-top: 1px solid var(--border); padding: 10px 0; } .actsec h3 { margin: 0 0 8px; font-size: 14px; color: var(--muted); }
+.actdone h3 { color: var(--accent); }
+.actcard { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; background: transparent; padding: 6px 4px; border-radius: 6px; color: var(--text); min-height: 0; }
+.actcard:hover { background: var(--accent-soft); } .acttitle { font-weight: 600; flex: 0 1 auto; min-width: 0; } .actcard .ssub { color: var(--muted); font-size: 12px; margin-left: auto; text-align: right; }
+.actitem { margin-bottom: 8px; }
+.actlog { list-style: none; margin: 0 0 0 46px; padding: 0; font-size: 13px; } .actlog li { padding: 2px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.actlog time { color: var(--muted); font-variant-numeric: tabular-nums; } .actlog b.agent { color: var(--accent); } .actlog li.dn { font-weight: 600; }
+@media (max-width: 760px) { .actlog { margin-left: 8px; } .actcard { flex-wrap: wrap; } .actcard .ssub { margin-left: 0; width: 100%; text-align: left; } }
+.actbar .seg { order: 0; }
+@media (max-width: 760px) { header #btnCopyMd { display: none; } }   /* phones: Copy as Markdown is in the Filters popover */
+@media (max-width: 420px) { header { column-gap: 4px; } header .seg button { min-width: 29px !important; padding: 6px 2px; } }   /* five views still fit on one row */
