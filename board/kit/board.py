@@ -84,6 +84,10 @@ if PROJECT.get("token_env") and os.environ.get(PROJECT["token_env"]):   # the fi
     os.environ.setdefault("BOARD_TOKEN", os.environ[PROJECT["token_env"]])
 if os.path.basename(os.path.dirname(os.path.abspath(__file__))) != "board":
     ROOT = None   # this board.py is not inside a board repo (e.g. the Claude plugin): no git remote, no kit files
+if not ROOT and not os.environ.get("BOARD_REPO"):   # plugin copy run inside a board repo clone: use that clone
+    _top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip()
+    if _top and os.path.isfile(os.path.join(_top, "board", "tasks.json")):
+        ROOT = _top
 REPO = os.environ.get("BOARD_REPO") or (repo_from_git() if ROOT else "")
 SCHEMA = 2  # the tasks.json version this board.py understands; newer files are read-only here (run kit-update)
 KIT_URL = os.environ.get("BOARD_KIT_URL", "https://raw.githubusercontent.com/rain-ventures-ai/co-assets/master/board/kit")
