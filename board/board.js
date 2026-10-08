@@ -1521,7 +1521,7 @@
       if (!rr.ok) {
         const near = await nearRepos(c.repo, c), fix = el('div', 'ckfix');
         if (near.length) { fix.append(document.createTextNode('This token can see: ')); near.forEach(r => { const x = el('button', 'small', r); x.type = 'button'; x.onclick = () => switchRepo(r); fix.append(x, document.createTextNode(' ')); }); }
-        add(false, 'Repository access', `The token cannot see "${c.repo}" (GitHub said ${rr.status}). Check the spelling, or edit the token on GitHub and add this repo under "Only select repositories".` + (near.length ? '' : ' The token can see no repositories at all.'), near.length ? fix : null);
+        add(false, 'Repository access', `The token cannot see "${c.repo}" (GitHub said ${rr.status}). Check the spelling, or edit the token on GitHub and add this repo under "Only select repositories".` + (near.length ? ` It can see: ${near.join(', ')}. A fine-grained token covers one owner only; a board under another owner needs its own token with that Resource owner.` : ' The token can see no repositories at all.'), near.length ? fix : null);
         return;
       }
       const repo = await rr.json(); add(true, 'Repository access', `${repo.full_name} · ${repo.private ? 'private' : 'public'} · default branch ${repo.default_branch}`);
