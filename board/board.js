@@ -142,9 +142,20 @@
       if (res.status === 401 || res.status === 403) { lastProblem = `Loading the board: GitHub said ${res.status} (token rejected or no access)`; setStatus('Token rejected or lacks access', 'err'); return false; }
       if (!res.ok) { lastProblem = `Loading the board: GitHub error ${res.status}`; setStatus(`GitHub error ${res.status}`, 'err'); return false; }
       const data = await res.json(); sha = data.sha; etag = res.headers.get('ETag'); const raw = JSON.parse(b64d(data.content));
-      newerSchema = Number.isInteger(raw.version) && raw.version > KNOWN_SCHEMA ? raw.version : 0; state = normalise(raw); checkKit(); lastSyncOk = true; initSeen(); setTimeout(openFromHash, 30);
+      newerSchema = Number.isInteger(raw.version) && raw.version > KNOWN_SCHEMA ? raw.version : 0; state = normalise(raw); checkKit(); checkPublic(); lastSyncOk = true; initSeen(); setTimeout(openFromHash, 30);
       setStatus('Synced ' + new Date().toLocaleTimeString(), 'ok'); render(); return true;
     } catch (e) { console.error(e); lastProblem = 'Loading the board: ' + (e && e.message || e); setStatus('Network or parse error', 'err'); return false; }
+  }
+
+  // ---- a public board repo means anyone can read every card: warn loudly on every page load ----------
+  let publicChecked = '';
+  async function checkPublic() {
+    const c = cfg(); if (publicChecked === c.repo) return; publicChecked = c.repo;
+    try { const r = await fetch(`${c.api}/repos/${c.repo}`, { cache: 'no-store', headers: { Authorization: `Bearer ${c.token}`, Accept: 'application/vnd.github+json' } });
+      if (!r.ok) return; const repo = await r.json(); if (repo.private !== false) return;
+      $('pubRepo').textContent = repo.full_name; $('pubLink').href = `https://github.com/${repo.full_name}/settings`;
+      if (!$('dlgPublic').open) $('dlgPublic').showModal();
+    } catch { /* offline: the next page load checks again */ }
   }
 
   // ---- board kit: is this repo's copy of the shared tools older than the kit published with this page? ----
@@ -1525,6 +1536,7 @@
         return;
       }
       const repo = await rr.json(); add(true, 'Repository access', `${repo.full_name} · ${repo.private ? 'private' : 'public'} · default branch ${repo.default_branch}`);
+      if (repo.private === false) add(false, 'Repository is PUBLIC', 'Anyone can read every card. Make the repo private: GitHub → Settings → General → Change visibility.');
       const br = await ghGet(`/repos/${c.repo}/branches/${encodeURIComponent(c.branch)}`, null, c);
       if (!br.ok) { add(false, 'Branch', `Branch "${c.branch}" does not exist. The default branch is "${repo.default_branch}".`); return; } add(true, 'Branch', c.branch);
       const fr = await ghGet(`/repos/${c.repo}/contents/${c.path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(c.branch)}`, null, c);
@@ -1551,6 +1563,7 @@
       const mine = myAgents(); $('sUseClaude').checked = mine.includes('claude'); $('sUseCodex').checked = mine.includes('codex'); showAgentBoxes(); }
   }
   document.querySelectorAll('.stabs button').forEach(b => { b.onclick = () => settingsTab(b.dataset.tab); });
+  $('pubOk').onclick = () => $('dlgPublic').close();
   $('ckRun').onclick = () => runChecks();
   $('sTest').onclick = () => { const repo = $('sRepo').value.trim(), typed = $('sToken').value.trim(), same = repo === cfg().repo;
     const over = { repo, branch: $('sBranch').value.trim() || 'master', path: $('sPath').value.trim() || 'board/tasks.json', me: $('sMe').value.trim(), token: typed || (same ? cfg().token : (boardsMap()[repo] || {}).token || '') };

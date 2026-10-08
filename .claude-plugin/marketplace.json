@@ -1,0 +1,12 @@
+{
+  "name": "rain-board",
+  "description": "Rain Ventures tools for Claude Code",
+  "owner": { "name": "Rain Ventures", "url": "https://github.com/rain-ventures-ai" },
+  "plugins": [
+    {
+      "name": "board",
+      "source": "./board/kit",
+      "description": "Use a Rain task board from any project: find, claim, update and finish tasks with board.py."
+    }
+  ]
+}
