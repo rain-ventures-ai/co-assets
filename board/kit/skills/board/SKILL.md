@@ -1,94 +1,57 @@
 ---
 name: board
-description: Work from the team task board (board/tasks.json) via board/board.py. Use when asked what to work on, to pick up, claim, update, finish or add a task, or to check for stuck agent work.
+description: Use a Rain task board (board/tasks.json in a GitHub repo, e.g. rain-ventures-ai/consulting or osouthgate/private-tasks) from any project. Use when asked what to work on, to pick up, claim, update, comment on, finish or add a board task, or "which board does this project use".
 ---
 
-# Team board
+# Task board (from any project)
 
-The board lives in `board/tasks.json` and is managed only through `python3 board/board.py`. Read `AGENTS.md` for the rules; this is the procedure.
+A board is `board/tasks.json` in a GitHub repo. People use the web board; agents use `board.py`. Never edit `tasks.json` by hand.
 
-## 1. Identify who you act for
-Use `BOARD_USER` (or `gh api user --jq .login`). Valid users: the `people` in `board/tasks.json`. Set `BOARD_AGENT=claude` and `BOARD_SESSION` to a short id for this session.
+Run board.py like this (the path is filled in by the plugin):
+```bash
+B="python3 ${CLAUDE_PLUGIN_ROOT}/board.py"
+```
+If the current folder is itself a board repo (it has `board/board.py` and `board/tasks.json`), use `python3 board/board.py` from that repo instead, and follow its `.claude/skills/board/SKILL.md`.
+
+## 1. Which board?
+```bash
+$B where
+```
+- It shows the board, user and auth, and where each setting comes from. It never prints a token.
+- If it says `board: (none)`, ask the human which board this project uses (for example `rain-ventures-ai/consulting` for team or client work, `osouthgate/private-tasks` for Ollie's own tasks). Then save the choice:
+  ```bash
+  $B use <owner/name> --user <their-github-user> [--token-env <VAR_NAME>]
+  ```
+  This writes `.board/config.json` in the project root and a `.board/.gitignore` with `*`, so it is never committed.
+- `--token-env` names the environment variable that holds that board's token (for example `BOARD_TOKEN_PRIVATE`). Never write a token into a file, a command or a message. If the human has a `gh` login with access to the board repo, no token is needed.
+- A fine-grained token covers one owner only. A board under another owner needs its own token.
 
 ## 2. Find work
 ```bash
-python3 board/board.py list --assignee "$BOARD_USER" --column todo --unclaimed
-python3 board/board.py show <id>        # read details, links and contacts before starting
+$B list --assignee <user> --column todo --unclaimed
+$B show '#12'             # details, checklist, comments and history; read the comments before you start
 ```
-If the human named a task, use that one. Do not pick tasks assigned to someone else.
+Only work on tasks assigned to the human you act for, unless they tell you otherwise.
 
-## 3. Claim, work, heartbeat
+## 3. Claim, work, report
 ```bash
-python3 board/board.py claim <id> --note "starting: <one-line plan>"
-python3 board/board.py heartbeat <id> --note "<current step>"     # at each milestone
+export BOARD_AGENT=claude BOARD_SESSION=<short session id>
+$B claim '#12' --note "starting: <one-line plan>"
+$B heartbeat '#12' --note "<current step>"        # at each milestone
+$B todo-done '#12' <N>                            # tick each checklist item the moment it is done
+$B comment '#12' "<question or update>"            # questions also need: heartbeat --status blocked
+$B link '#12' <pull request url> --title "PR"
+$B done '#12' --note "<result, link>"              # or: release '#12' --column todo
 ```
-In Claude Code a project hook sends a quiet heartbeat automatically (at most every 5 min) while a claim is active, so the claim does not go stale during long work. The manual heartbeat is for updating the note. Without `gh`, set `BOARD_TOKEN` (fine-grained, Contents read/write on this repo).
-If a claim is refused because another session holds it, stop and tell the human. Do not use `--force` unless they say so.
+The plugin's hook sends a quiet heartbeat at most every 5 minutes while a claim is active. The claim is recorded in `.board/claim.json` (ignored by git).
 
-## 3b. Checklist
-If `show` lists to-dos, work through them in order and tick each one as soon as it is done. Add steps you discover.
+## 4. Add a task
 ```bash
-python3 board/board.py todo-done <id> <N>      # N is the number shown by `show`
-python3 board/board.py todo-add <id> "<new step>"
-python3 board/board.py todo-undo <id> <N>      # reopen
-python3 board/board.py todo-rm <id> <N>
-python3 board/board.py history <id>            # automatic log of claims, progress notes, ticks and moves
+$B add "Title" --assign <user> --client "<client>" --due YYYY-MM-DD --details "<text>" --todo "step 1" --todo "step 2"
 ```
+Keep client-confidential detail out of cards: link to the file or document instead.
 
-## 3c. Comments
-`show` prints the latest comments; read them first, since people leave instructions and answers there.
-```bash
-python3 board/board.py comments <id>             # full stream
-python3 board/board.py comment <id> "question, update or hand-off"
-```
-Post a short comment when you finish (what you did, with links) and whenever you need a human.
-
-## 4. Blocked or stuck
-```bash
-python3 board/board.py heartbeat <id> --status blocked --note "<exactly what you need>"
-```
-Then tell the human in your reply.
-
-## 5. Finish
-```bash
-python3 board/board.py done <id> --note "<result and link to the file/PR>"
-# or hand back:
-python3 board/board.py release <id> --column todo
-```
-
-## Adding tasks
-```bash
-python3 board/board.py add "Title" --assign <user> --label <label> --due YYYY-MM-DD --client "Hurst College" --details "<text and URLs>" --todo "step 1" --todo "step 2"
-```
-`--client` is optional; leave it out for tasks that are not about a client.
-
-## Checking on others
-`python3 board/board.py list --attention` lists stale, stuck and blocked claims.
-
-## Never
-- Edit `board/tasks.json` directly.
-- Put client-confidential content in card text.
-- Contact anyone outside the repo or share prices without the human's explicit approval.
-
-## Numbers and mentions
-- Refer to tasks as `#12` (shown on each card); `board.py show '#12'` works wherever an id is accepted.
-- To get a human's attention, add a comment containing `@github-username` plus the reason; they see an "@ you" marker on the card.
-
-## Working from a GitHub issue (board-task)
-Issues created with the board's "Create issue" button carry `<!-- board-task: id=... num=N -->` and are titled `[#N] ...`. When you are asked to work such an issue:
-1. `python3 board/board.py show '#N'` for the card, comments and checklist; the issue body is a snapshot.
-2. Report back on the board, not only on the issue: `comment '#N' "..."` for progress or questions, `move '#N' in-progress|todo|done` for status, `link '#N' <PR url> --title "PR"` when you open a pull request.
-3. Need a person (decision, access, review)? `assign '#N' <github-user> --note "why"` and comment with `@username`; then stop and wait.
-4. Finish with `done '#N' --note "<result, PR link>"`. Set BOARD_USER and BOARD_AGENT; without a `gh` login set BOARD_TOKEN (or GH_TOKEN in GitHub Actions).
-
-## Fired from the board (a person typed `@claude` in a comment)
-A routine run starts with a `routine-fire-payload` naming a task number (`#N`) and the person (`@user`). The page has already put a claim on the card for this run, so:
-1. `export BOARD_USER=<user> BOARD_AGENT=claude BOARD_SESSION=<short id>`; `BOARD_TOKEN` is set in the routine's environment.
-2. `python3 board/board.py claim '#N' --for <user> --agent claude --session "$BOARD_SESSION" --force --note "working"` (`--force` is expected here: it replaces the page's placeholder claim).
-3. `board.py show '#N'` and `board.py comments '#N'`; do what the newest `@claude` comment from that user asks, and nothing beyond it.
-4. Keep the card honest while you work: `heartbeat '#N' --note "..."`, `todo-add` / `todo-done` for steps, `comment '#N'` for anything a human should read, `link '#N' <PR url> --title "PR"` for pull requests, `move '#N' <column>` for status.
-5. Need a decision, access or review? `comment` with `@<user>` and the question, `assign '#N' <user> --note "why"`, then stop. Never guess.
-6. Finish: `comment` the outcome, `assign '#N' <user>`, `done '#N' --note "<result>"`.
-
-### Command cheat sheet
-`list`, `show`, `claim`, `next`, `heartbeat`, `release`, `done`, `add`, `move ID COLUMN`, `assign ID USER... [--add|--remove]`, `link ID URL --title`, `todo-add|todo-done|todo-undo|todo-rm`, `comment`, `comments`, `history`. `ID` may be a task number such as `'#12'`. Columns: `backlog`, `todo`, `in-progress`, `done`. People: the `people` in `board/tasks.json`.
+## Rules
+- Do not send anything outside the repo (emails, messages, quotes) without the human's explicit say-so.
+- Never use `--force` on someone else's claim unless the human says so.
+- If a write fails with "cannot save with git", the GitHub API refused the write (Claude's cloud sandbox does this). From another project there is no clone to push from: tell the human, and suggest running the step in the board repo instead.

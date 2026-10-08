@@ -35,6 +35,10 @@ Claude's cloud sandbox (routines, Claude Code on the web) lets the GitHub API re
 write is refused that way, board.py saves instead by committing tasks.json and running `git push` from the clone it
 lives in (the sandbox allows git pushes). BOARD_WRITE=git forces that; BOARD_WRITE=api turns it off.
 
+From any other project (Claude plugin "board"): name the board once, then use the same commands.
+  board.py use osouthgate/private-tasks [--user osouthgate] [--token-env BOARD_TOKEN_PRIVATE]   # writes .board/config.json (gitignored)
+  board.py where               # which board, from where, which auth (never prints a token)
+
   board.py auto-heartbeat      # for a hook: refreshes your active claim at most every 5 minutes, silent no-op otherwise
 
 Board kit (shared tools, kept in one place and copied into each board repo):
@@ -56,7 +60,31 @@ def repo_from_git():
     return m.group(1) if m else ""
 
 
-REPO = os.environ.get("BOARD_REPO") or repo_from_git()
+def project_config():
+    """A project that is not a board repo names its board in .board/config.json (gitignored; `board.py use` writes it).
+    Found by walking up from the current folder. Environment variables still win over it."""
+    d = os.getcwd()
+    while True:
+        p = os.path.join(d, ".board", "config.json")
+        if os.path.isfile(p):
+            try:
+                return d, json.load(open(p))
+            except (OSError, ValueError) as e:
+                sys.exit(f"cannot read {p}: {e}")
+        if os.path.dirname(d) == d:
+            return None, {}
+        d = os.path.dirname(d)
+
+
+PROJECT_DIR, PROJECT = project_config()
+for _k, _v in (("BOARD_REPO", "repo"), ("BOARD_BRANCH", "branch"), ("BOARD_PATH", "path"), ("BOARD_USER", "user")):
+    if PROJECT.get(_v):
+        os.environ.setdefault(_k, str(PROJECT[_v]))
+if PROJECT.get("token_env") and os.environ.get(PROJECT["token_env"]):   # the file names the variable that holds the token, never the token
+    os.environ.setdefault("BOARD_TOKEN", os.environ[PROJECT["token_env"]])
+if os.path.basename(os.path.dirname(os.path.abspath(__file__))) != "board":
+    ROOT = None   # this board.py is not inside a board repo (e.g. the Claude plugin): no git remote, no kit files
+REPO = os.environ.get("BOARD_REPO") or (repo_from_git() if ROOT else "")
 SCHEMA = 2  # the tasks.json version this board.py understands; newer files are read-only here (run kit-update)
 KIT_URL = os.environ.get("BOARD_KIT_URL", "https://raw.githubusercontent.com/rain-ventures-ai/co-assets/master/board/kit")
 KIT_GIT = "https://github.com/rain-ventures-ai/co-assets"
@@ -74,7 +102,8 @@ def parse(ts):
     return dt.datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.timezone.utc)
 
 
-CLAIM_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".board-claim.json")  # local, gitignored
+CLAIM_FILE = (os.path.join(PROJECT_DIR, ".board", "claim.json") if PROJECT_DIR else
+              os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".board-claim.json"))  # local, gitignored
 HEARTBEAT_EVERY = 300  # seconds between automatic heartbeats
 
 
@@ -145,6 +174,9 @@ def git(*args, inp=None, env=None):
 
 
 def git_load():
+    if not ROOT:
+        sys.exit(f"cannot save with git: board.py is not in a clone of {REPO}. Here the GitHub API must accept writes "
+                 "(set BOARD_TOKEN, or use gh), or run board.py from a clone of the board repo.")
     rc, url, _ = git("remote", "get-url", "origin")
     if rc or REPO.lower() not in url.lower().removesuffix(".git"):
         sys.exit(f"cannot save with git: {ROOT} is not a clone of {REPO} (origin is {url or 'missing'})")
@@ -190,7 +222,8 @@ def git_save(text, parent, message):
 
 def load():
     if not REPO and not FILE:
-        sys.exit("cannot tell which repo this board is in: run board.py from a clone of the board repo, or set BOARD_REPO=owner/name")
+        sys.exit("cannot tell which board to use: run board.py from a clone of the board repo, run `board.py use owner/name` "
+                 "in this project, or set BOARD_REPO=owner/name")
     if FILE:
         raw = open(FILE, "rb").read()
         return assign_nums(json.loads(raw)), None
@@ -634,6 +667,11 @@ def kit_clone():
     return _KIT_DIR
 
 
+def need_repo_clone():
+    if not ROOT:
+        sys.exit("this command works on a clone of a board repo: run it as board/board.py inside that repo")
+
+
 def kit_local():
     try:
         return int(open(os.path.join(ROOT, "board", "KIT_VERSION")).read().strip() or 0)
@@ -648,6 +686,7 @@ def kit_owner(data):
 
 
 def cmd_kit_check(a):
+    need_repo_clone()
     try:
         m = json.loads(kit_fetch("manifest.json", a.source))
     except (KitError, ValueError) as e:
@@ -683,6 +722,7 @@ def cmd_kit_check(a):
 
 
 def cmd_kit_update(a):
+    need_repo_clone()
     try:
         m = json.loads(kit_fetch("manifest.json", a.source))
         files = {dest: kit_fetch(src, a.source) for dest, src in m["files"].items()}  # fetch everything before writing anything
@@ -725,6 +765,7 @@ def cmd_kit_owner(a):
 
 
 def cmd_init(a):
+    need_repo_clone()
     """Set up a new board repo in this clone: the kit, the repo-owned starter files (only if missing) and an empty board."""
     if not REPO:
         sys.exit("run init inside a clone of the new board repo (its git remote names the repo)")
@@ -759,6 +800,39 @@ def cmd_init(a):
         os.makedirs(os.path.dirname(tj), exist_ok=True)
         open(tj, "w").write(json.dumps(data, indent=2, ensure_ascii=False) + "\n"); print(f"wrote {PATH} (empty board, upgrade owner @{people[0]['github']})")
     print("Next: commit and push to the default branch, then add the board in the web board: Settings → Boards → Add an existing board.")
+
+
+def cmd_use(a):
+    """Name this project's board in .board/config.json (and keep the folder out of git)."""
+    if not re.fullmatch(r"[\w.-]+/[\w.-]+", a.repo):
+        sys.exit("repo must be owner/name, e.g. osouthgate/private-tasks")
+    rc, top, _ = (lambda p: (p.returncode, p.stdout.strip(), p.stderr))(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True))
+    base = top if rc == 0 and top else os.getcwd()
+    d = os.path.join(base, ".board"); os.makedirs(d, exist_ok=True)
+    cfg = {"repo": a.repo, "branch": a.branch or "master", "path": a.path or "board/tasks.json"}
+    if a.user: cfg["user"] = a.user
+    if a.token_env:
+        if not re.fullmatch(r"[A-Z_][A-Z0-9_]*", a.token_env):
+            sys.exit("--token-env takes the NAME of an environment variable (e.g. BOARD_TOKEN_PRIVATE), never the token")
+        cfg["token_env"] = a.token_env
+    json.dump(cfg, open(os.path.join(d, "config.json"), "w"), indent=2); open(os.path.join(d, "config.json"), "a").write("\n")
+    open(os.path.join(d, ".gitignore"), "w").write("# local board settings for this project; never committed\n*\n")
+    print(f"this project now uses the board {a.repo} ({os.path.join(d, 'config.json')}, ignored by git)")
+
+
+def cmd_where(a):
+    """Which board, and where each setting comes from. Never prints a token."""
+    src = lambda env, key: "environment" if os.environ.get(env) and str(PROJECT.get(key, "")) != os.environ.get(env) else (".board/config.json" if PROJECT.get(key) else "default")
+    print(f"board:   {REPO or '(none)'}  [{src('BOARD_REPO', 'repo') if os.environ.get('BOARD_REPO') or PROJECT.get('repo') else ('git remote' if REPO else '-')}]")
+    print(f"branch:  {BRANCH}  [{src('BOARD_BRANCH', 'branch')}]")
+    print(f"path:    {PATH}  [{src('BOARD_PATH', 'path')}]")
+    print(f"user:    {os.environ.get('BOARD_USER') or '(from gh login)'}")
+    tv = PROJECT.get("token_env")
+    auth = (f"token from ${tv}" if tv and os.environ.get(tv) else f"${tv} is NOT set" if tv else
+            "BOARD_TOKEN" if os.environ.get("BOARD_TOKEN") else "gh login" if shutil.which("gh") else "GH_TOKEN/GITHUB_TOKEN" if token() else "none")
+    print(f"auth:    {auth}")
+    print(f"config:  {os.path.join(PROJECT_DIR, '.board', 'config.json') if PROJECT_DIR else '(no .board/config.json found)'}")
+    print(f"claims:  {CLAIM_FILE}")
 
 
 def main():
@@ -804,6 +878,10 @@ def main():
     s = sub.add_parser("kit-owner"); s.add_argument("user", nargs="?"); s.set_defaults(f=cmd_kit_owner)
     s = sub.add_parser("init"); s.add_argument("--person", action="append", required=True, help="github-user:Display Name (repeatable; the first is the upgrade owner)")
     s.add_argument("--client", action="append"); s.add_argument("--from", dest="source"); s.set_defaults(f=cmd_init)
+    s = sub.add_parser("use", help="name this project's board in .board/config.json (gitignored)"); s.add_argument("repo")
+    s.add_argument("--user"); s.add_argument("--branch"); s.add_argument("--path"); s.add_argument("--token-env", help="NAME of the env variable that holds this board's token")
+    s.set_defaults(f=cmd_use)
+    s = sub.add_parser("where", help="show which board this project uses and where each setting comes from"); s.set_defaults(f=cmd_where)
     a = p.parse_args()
     FILE = a.file
     a.f(a)

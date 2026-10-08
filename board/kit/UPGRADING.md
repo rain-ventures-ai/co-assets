@@ -19,6 +19,13 @@ Each board has one **upgrade owner**: `settings.kit_owner` in `tasks.json`. If i
 
 ## Versions
 
+### v3 (schema 2)
+Boards can be used from any project, and the kit is also a Claude Code plugin (`board@rain-board`, see `PLUGIN.md`).
+- `board.py use owner/name [--user U] [--token-env VAR]` writes a gitignored `.board/config.json` in a project; `board.py where` shows which board and auth a folder uses.
+- In the kit, the skills that are copied into board repos moved from `skills/` to `repo-skills/` (`skills/` is now the plugin's skill). The paths in a board repo do not change.
+- Agent steps: run `kit-update` only. No data change.
+- Check: `python3 board/board.py kit-check` says v3 is current, and `python3 board/board.py where` shows the repo from the git remote.
+
 ### v2 (schema 2)
 New boards can be set up with one command, and the web board has Settings → Boards.
 - `board.py init --person user:Name` sets up a new board repo: the kit, starter `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `.claude/settings.json` (only when missing) and an empty `tasks.json`. The starter files come from `templates/` in the kit and belong to the repo after that.

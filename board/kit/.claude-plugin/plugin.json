@@ -1,0 +1,9 @@
+{
+  "name": "board",
+  "displayName": "Task board",
+  "description": "Use a Rain task board (board/tasks.json in a GitHub repo) from any project: find, claim, update and finish tasks with board.py. Each project names its board in a gitignored .board/config.json.",
+  "author": { "name": "Rain Ventures" },
+  "homepage": "https://github.com/rain-ventures-ai/co-assets/tree/master/board/kit",
+  "repository": "https://github.com/rain-ventures-ai/co-assets",
+  "keywords": ["tasks", "board", "kanban"]
+}

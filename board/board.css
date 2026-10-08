@@ -533,3 +533,10 @@ header .boardwrap { order: 0; }
 .ckic { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 700; color: #fff; background: var(--muted); }
 .ck.ok .ckic { background: #2f9e44; } .ck.bad .ckic { background: var(--danger); } .ck.warn .ckic { background: #e8a200; }
 .ckd { color: var(--muted); margin: 3px 0 0 24px; overflow-wrap: anywhere; } .ckfix { margin: 6px 0 0 24px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* public board warning */
+.pubwarn { max-width: 560px; border: 4px solid var(--danger); border-radius: 14px; padding: 24px 26px; text-align: left; }
+.pubwarn::backdrop { background: color-mix(in srgb, var(--danger) 45%, rgba(0,0,0,.6)); }
+.pubwarn h2 { margin: 6px 0 12px; font-size: 26px; color: var(--danger); } .pubicon { font-size: 52px; line-height: 1; }
+.pubwarn p { font-size: 15px; line-height: 1.5; } .pubwarn .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 16px; }
+.btnlink { display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 8px; background: var(--accent); color: var(--on-accent); text-decoration: none; font-weight: 600; }

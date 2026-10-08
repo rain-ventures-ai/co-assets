@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "schema": 2,
   "files": {
     "board/board.py": "board.py",
@@ -8,8 +8,8 @@
     "board/ROUTINE-SETUP.md": "ROUTINE-SETUP.md",
     "board/routine-loader.txt": "routine-loader.txt",
     "board/routine-prompt.md": "routine-prompt.md",
-    ".claude/skills/board/SKILL.md": "skills/board/SKILL.md",
-    ".claude/skills/board-routine-setup/SKILL.md": "skills/board-routine-setup/SKILL.md",
-    ".claude/skills/board-upgrade/SKILL.md": "skills/board-upgrade/SKILL.md"
+    ".claude/skills/board/SKILL.md": "repo-skills/board/SKILL.md",
+    ".claude/skills/board-routine-setup/SKILL.md": "repo-skills/board-routine-setup/SKILL.md",
+    ".claude/skills/board-upgrade/SKILL.md": "repo-skills/board-upgrade/SKILL.md"
   }
 }

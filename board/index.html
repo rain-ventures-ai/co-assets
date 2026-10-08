@@ -58,6 +58,14 @@
   <p>Your comment will be posted, then <b>your Claude routine</b> will be started to work on task <b id="sendNum"></b>. It will report back on this task with comments, and hand it back to you when it is done. It starts in about one to two minutes.</p>
   <div class="actions"><button id="sendNo" type="button">Cancel</button><span class="spacer"></span><button id="sendPost" type="button">Post comment only</button><button id="sendYes" type="button" class="primary">Send to Claude</button></div>
 </dialog>
+<dialog id="dlgPublic" class="pubwarn" aria-labelledby="pubTitle">
+  <div class="pubicon" aria-hidden="true">⚠️</div>
+  <h2 id="pubTitle">This board is PUBLIC</h2>
+  <p>The repository <b id="pubRepo"></b> is public. <b>Anyone on the internet can read every card</b>: titles, descriptions, comments, contacts, links and history.</p>
+  <p>Unless that is what you want, make the repository private now: GitHub → the repo → Settings → General → Danger Zone → <b>Change visibility</b> → Make private.</p>
+  <div class="actions"><a id="pubLink" class="primary btnlink" href="#" target="_blank" rel="noopener noreferrer">Open the repo settings on GitHub</a><span class="spacer"></span><button id="pubOk" type="button">I understand, show the board</button></div>
+  <p class="hint">This warning shows on every page load while the repository is public.</p>
+</dialog>
 <dialog id="dlgSettings" class="settings">
   <div class="sethead"><h3>Settings</h3><button id="sClose" class="ico" aria-label="Close settings">✕</button></div>
   <div class="stabs" role="tablist" aria-label="Settings sections">
