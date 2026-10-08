@@ -142,7 +142,7 @@
       if (res.status === 401 || res.status === 403) { lastProblem = `Loading the board: GitHub said ${res.status} (token rejected or no access)`; setStatus('Token rejected or lacks access', 'err'); return false; }
       if (!res.ok) { lastProblem = `Loading the board: GitHub error ${res.status}`; setStatus(`GitHub error ${res.status}`, 'err'); return false; }
       const data = await res.json(); sha = data.sha; etag = res.headers.get('ETag'); const raw = JSON.parse(b64d(data.content));
-      newerSchema = Number.isInteger(raw.version) && raw.version > KNOWN_SCHEMA ? raw.version : 0; state = normalise(raw); checkKit(); checkPublic(); lastSyncOk = true; initSeen(); setTimeout(openFromHash, 30);
+      newerSchema = Number.isInteger(raw.version) && raw.version > KNOWN_SCHEMA ? raw.version : 0; const prev = lastSyncOk ? state : null; state = normalise(raw); if (prev) alertChanges(prev, state); checkKit(); checkPublic(); lastSyncOk = true; initSeen(); setTimeout(openFromHash, 30);
       setStatus('Synced ' + new Date().toLocaleTimeString(), 'ok'); render(); return true;
     } catch (e) { console.error(e); lastProblem = 'Loading the board: ' + (e && e.message || e); setStatus('Network or parse error', 'err'); return false; }
   }
@@ -655,7 +655,7 @@
     bell.title = fresh ? `${fresh} card${fresh > 1 ? 's' : ''} with new comments or changes${freshOnly ? ' (showing only these; click to show all)' : ' (click to show only these)'}` : (cfg().me ? 'Nothing new' : 'Set your GitHub username in Settings to see unread markers');
     document.title = (fresh ? `(${fresh}) ` : '') + 'Team Board';
     const nf = ['fWho', 'fLabel', 'fPrio'].filter(id => $(id).value).length + ($('fAttn').checked ? 1 : 0) + ($('fHideDone').checked ? 1 : 0) + (freshOnly ? 1 : 0), fb = $('filterBadge');
-    fb.textContent = String(nf); fb.hidden = !nf; renderTopbar();
+    fb.textContent = String(nf); fb.hidden = !nf; $('btnFilter').title = nf ? `Filters (${nf} on)` : 'Filters'; renderTopbar();
   }
 
   // Recognise GitHub URLs (any repo) so they read as "owner/repo#12" chips on the card
@@ -1554,11 +1554,58 @@
       $('ckCopy').hidden = false; $('ckRun').disabled = false;
     }
   }
+  // ---- alerts: desktop notifications for changes made by other people (and by your own agents) ----------
+  // Works while the board is open in any tab (also a background tab). Settings → Alerts picks what to hear about.
+  const ALERT_KINDS = [['mention', '@ mentions of me'], ['assign', 'Cards assigned to me'], ['mine', 'Comments and changes on my cards'], ['agents', 'Updates from my agents'],
+    ['blocked', 'An agent is blocked or stuck'], ['new', 'New cards'], ['comment', 'All new comments'], ['done', 'Cards completed'], ['all', 'Every other change']];
+  const ALERT_PRESETS = { all: ALERT_KINDS.map(k => k[0]), me: ['mention', 'assign', 'mine', 'agents', 'blocked'], tagged: ['mention', 'assign'], off: [] };
+  function alertCfg() { try { const o = JSON.parse(LS.get('kb_alerts', '')); if (o && Array.isArray(o.kinds)) return o; } catch {} return { on: false, kinds: ALERT_PRESETS.me }; }
+  const saveAlertCfg = o => LS.set('kb_alerts', JSON.stringify(o));
+  function alertChanges(prev, next) {
+    const ac = alertCfg(); if (!ac.on || !ac.kinds.length) return;
+    const me = (cfg().me || '').toLowerCase(), want = new Set(ac.kinds), P = new Map(prev.tasks.map(t => [t.id, t])), out = [];
+    const isMe = by => String(by || '').toLowerCase() === me, myAgent = by => !!me && String(by || '').toLowerCase().endsWith('@' + me);
+    next.tasks.forEach(t => {
+      const p = P.get(t.id), mine = !!me && t.assignees.some(a => a.toLowerCase() === me), push = (kinds, by, text) => { if (isMe(by)) return; const k = kinds.find(x => want.has(x)); if (k) out.push({ t, by, text, k }); };
+      if (!p) { push(['assign', 'new', 'mine', 'all'].filter(k => k !== 'assign' || mine).filter(k => k !== 'mine' || mine), t.createdBy || (t.history[0] || {}).by, 'New card' + (mine ? ' assigned to you' : '')); return; }
+      const pc = new Set(p.comments.map(x => x.id || x.at));
+      t.comments.filter(x => !pc.has(x.id || x.at)).forEach(x => push([mentionsMe(x.text) && 'mention', myAgent(x.by) && 'agents', mine && 'mine', 'comment', 'all'].filter(Boolean), x.by, '💬 ' + x.text));
+      const ph = maxAt(p.history);
+      t.history.filter(x => x.at > ph).forEach(x => {
+        const tx = String(x.text || ''), toMe = !!me && /assign/i.test(tx) && new RegExp('@' + me + '\\b', 'i').test(tx);
+        push([toMe && 'assign', /^(status|claim) (blocked|stuck)/.test(tx) && 'blocked', myAgent(x.by) && 'agents', isDoneEntry(x) && 'done', mine && 'mine', 'all'].filter(Boolean), x.by, tx);
+      });
+    });
+    if (!out.length) return;
+    const show = out.length > 4 ? [{ t: null, by: '', text: out.slice(0, 3).map(e => `#${e.t.num} ${e.t.title}`).join(' · ') + ` and ${out.length - 3} more`, k: 'all' }] : out;
+    show.forEach(e => notify(e.t ? `#${e.t.num} ${e.t.title}` : `${out.length} board changes`, e.t ? `${e.by || 'someone'}: ${e.text}` : e.text, e.t && e.t.id));
+  }
+  function notify(title, body, id) {
+    const n = 'Notification' in window && Notification.permission === 'granted';
+    if (!n) { if (!document.hidden) toast(title + ': ' + body); return; }
+    try { const x = new Notification(title, { body: String(body).slice(0, 240), tag: id || 'board', icon: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="' + boardColour(cfg().repo) + '"/><text x="32" y="41" font-size="24" font-family="sans-serif" font-weight="700" fill="#fff" text-anchor="middle">' + boardInitials(cfg().repo) + '</text></svg>') });
+      x.onclick = () => { window.focus(); if (id) openCard(id); x.close(); }; } catch { toast(title + ': ' + body); }
+  }
+  function renderAlerts() {
+    const ac = alertCfg(), perm = 'Notification' in window ? Notification.permission : 'unsupported', box = $('alKinds'); box.textContent = '';
+    $('alOn').checked = ac.on;
+    $('alPerm').textContent = perm === 'granted' ? '✓ Notifications are allowed in this browser.' : perm === 'denied' ? '✗ This browser blocks notifications from this page. Allow them in the site settings (the icon left of the address), then reload.' : perm === 'unsupported' ? 'This browser cannot show notifications. Alerts show as messages on the page.' : 'Notifications are not allowed yet. Switch alerts on to ask.';
+    ALERT_KINDS.forEach(([k, l]) => { const lab = el('label', 'chk'), i = el('input'); i.type = 'checkbox'; i.checked = ac.kinds.includes(k); i.disabled = !ac.on;
+      i.onchange = () => { const o = alertCfg(); o.kinds = ALERT_KINDS.map(x => x[0]).filter(x => x === k ? i.checked : o.kinds.includes(x)); saveAlertCfg(o); syncPreset(); }; lab.append(i, document.createTextNode(' ' + l)); box.append(lab); });
+    syncPreset();
+  }
+  function syncPreset() { const ks = alertCfg().kinds.slice().sort().join(); $('alPreset').value = Object.keys(ALERT_PRESETS).find(p => ALERT_PRESETS[p].slice().sort().join() === ks) || 'custom'; }
+  $('alOn').onchange = async () => { const o = alertCfg(); o.on = $('alOn').checked; saveAlertCfg(o);
+    if (o.on && 'Notification' in window && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch {} } renderAlerts(); };
+  $('alPreset').onchange = async () => { const v = $('alPreset').value; if (!ALERT_PRESETS[v]) return; const o = alertCfg(); o.kinds = ALERT_PRESETS[v].slice(); o.on = v !== 'off'; saveAlertCfg(o);
+    if (o.on && 'Notification' in window && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch {} } renderAlerts(); };
+  $('alTest').onclick = () => notify('Test alert', 'Board alerts work in this browser.', null);
   function settingsTab(name) {
-    const ids = { general: ['panelGeneral', 'tabGeneral'], conn: ['panelConn', 'tabConn'], claude: ['panelClaude', 'tabClaude'], boards: ['panelBoards', 'tabBoards'], checks: ['panelChecks', 'tabChecks'] };
+    const ids = { general: ['panelGeneral', 'tabGeneral'], conn: ['panelConn', 'tabConn'], claude: ['panelClaude', 'tabClaude'], boards: ['panelBoards', 'tabBoards'], checks: ['panelChecks', 'tabChecks'], alerts: ['panelAlerts', 'tabAlerts'] };
     Object.keys(ids).forEach(n => { const on = n === name; $(ids[n][0]).hidden = !on; $(ids[n][1]).setAttribute('aria-selected', String(on)); });
     if (name === 'conn') setTimeout(() => $('sRepo').focus(), 30);
     if (name === 'boards') renderBoards();
+    if (name === 'alerts') renderAlerts();
     if (name === 'claude') { $('sClaudeUrl').value = LS.get('kb_claude_url'); $('sClaudeTok').value = LS.get('kb_claude_token'); $('sCronKey').value = LS.get('kb_cron_key'); $('sClaudeMsg').textContent = '';
       const mine = myAgents(); $('sUseClaude').checked = mine.includes('claude'); $('sUseCodex').checked = mine.includes('codex'); showAgentBoxes(); }
   }
@@ -1638,7 +1685,7 @@
     if (wrap && window.ResizeObserver) new ResizeObserver(() => { const w = Math.round(wrap.clientWidth); if (w !== lastW) { lastW = w; refit(); } }).observe(wrap);
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(refit); }
   ['fClient', 'fWho', 'fLabel', 'fPrio', 'fAttn', 'fHideDone'].forEach(i => $(i).addEventListener('change', render));
-  const canPoll = () => !busy && !document.hidden && !document.querySelector('dialog[open]:not(#dlgCard)') && !document.querySelector('.card.dragging') && lastSyncOk;
+  const canPoll = () => !busy && (!document.hidden || alertCfg().on) && !document.querySelector('dialog[open]:not(#dlgCard)') && !document.querySelector('.card.dragging') && lastSyncOk;
   setInterval(() => { if (canPoll()) load(true); }, 30000);   // conditional (ETag) so unchanged polls are 304s
   document.addEventListener('visibilitychange', () => { if (canPoll()) load(true); });  // catch up as soon as the tab is shown again
   setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) render(); }, 60000); // refresh "ago" and stale flags
