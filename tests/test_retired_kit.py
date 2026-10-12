@@ -104,6 +104,11 @@ class RetiredNotices(unittest.TestCase):
         self.assertIn("UPGRADING.md#v4-retired", line)
         self.assertIn("not `.claude/skills/board-upgrade/SKILL.md`", line)
 
+    def test_upgrade_owner_section_sends_the_routine_to_v4_steps(self):
+        text = read(os.path.join(KIT, "UPGRADING.md"))
+        line = [x for x in text.splitlines() if "comments `@claude upgrade the board kit`" in x][0]
+        self.assertIn('from v4 on it follows the "v4 (retired)" steps below instead', line)
+
     def test_stop_source_names_the_v4_steps(self):
         m = json.loads(read(os.path.join(KIT, "manifest.json")))
         self.assertIn(STOP_SOURCE, m["files"].values())
@@ -198,6 +203,16 @@ class RetiredKitUpdate(unittest.TestCase):
         self.assertEqual(data["version"], 2)
         self.assertEqual(data["tasks"][0]["links"][-1]["title"], "PR")
         self.assertEqual(data["tasks"][0]["claim"]["status"], "running")
+        # Step 10: hand the card over for the merge with the old tool; it stays open for the migration.
+        step10 = sec[sec.index("\n10. "):sec.index("Migration, after the PR")]
+        for word in ["/tmp/board.py", "`release` it with `--column in-progress`", "`assign` it to the upgrade owner",
+                     "Do not mark it `done`", "leave that item open until the migration"]:
+            self.assertIn(word, step10)
+        old("release", "#1", "--column", "in-progress"); old("assign", "#1", "osouthgate")
+        data = json.loads(self.board.read("board/tasks.json"))
+        self.assertEqual(data["version"], 2)
+        self.assertEqual((data["tasks"][0]["column"], data["tasks"][0]["claim"], data["tasks"][0]["assignees"]),
+                         ("in-progress", None, ["osouthgate"]))
         # Why: the same write with keeptrack.py would move the live board to schema 3, which board.py will not write.
         probe = os.path.join(self.tmp, "probe", "tasks.json"); os.makedirs(os.path.dirname(probe))
         shutil.copy(os.path.join(root, "board", "tasks.json"), probe)

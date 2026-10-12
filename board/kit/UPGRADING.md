@@ -11,7 +11,7 @@ Each board has one **upgrade owner**: `settings.kit_owner` in `tasks.json`. If i
 - See or change the owner: `python3 board/board.py kit-owner [github-user]`.
 - When the kit is out of date, the web board shows a banner. For the owner, the banner has a button that makes the upgrade card. Other people see who the owner is.
 - `board.py kit-check --card` makes the same card. A routine run does this at its start, so drift shows on the board with no CI.
-- The owner comments `@claude upgrade the board kit` on the card. Their routine follows `.claude/skills/board-upgrade/SKILL.md`.
+- The owner comments `@claude upgrade the board kit` on the card. Their routine follows `.claude/skills/board-upgrade/SKILL.md`; from v4 on it follows the "v4 (retired)" steps below instead, because that skill's `kit-update` stops on purpose.
 
 ## Rules for a kit change (for whoever changes co-assets board/kit)
 1. Increase `version` in `manifest.json` by one, and add a section below for the new version.
@@ -34,6 +34,7 @@ Agent steps, on a branch (`git checkout -b claude/board-kit-keeptrack`):
 7. Read the new `board/UPGRADING.md` from v5 on for anything else this repo needs. Do not migrate yet.
 8. Check: `python3 -m py_compile board/keeptrack.py`, `python3 board/keeptrack.py kit-check` (current) and `python3 board/keeptrack.py list` (works; it reads the schema-2 file as it is, and only reads).
 9. Commit, push the branch, open a pull request and link it on the card with `python3 /tmp/board.py link`. Say in the PR that the data migration follows the merge.
+10. Hand the card over for the merge, still with `/tmp/board.py`: `comment` that the PR is open, `release` it with `--column in-progress` and `assign` it to the upgrade owner. Do not mark it `done`: the migration below finishes it. A card made by an older `board.py` lists `migrate` before the PR in its checklist; leave that item open until the migration.
 
 Migration, after the PR is merged, from the default branch. It splits `board/tasks.json` into `board/cards/` and `board/people/` files, which only keeptrack's web board reads, so tell the team first:
 1. `python3 board/keeptrack.py migrate --to 4 --dry-run`. Check the counts and the file list.
