@@ -79,9 +79,24 @@ class V3Board:
 class RetiredNotices(unittest.TestCase):
     def test_every_entry_doc_says_retired(self):
         for name in ["README.md", "board/kit/README.md", "board/kit/PLUGIN.md", "board/kit/UPGRADING.md",
-                     "board/kit/NEW-BOARD.md", "board/kit/ROUTINE-SETUP.md", "board/kit/routine-prompt.md"]:
+                     "board/kit/NEW-BOARD.md", "board/kit/ROUTINE-SETUP.md", "board/kit/routine-prompt.md",
+                     "board/kit/skills/board/SKILL.md"]:
             head = "".join(read(os.path.join(REPO, name)).splitlines(True)[:8])
             self.assertRegex(head, NOTICE, name)
+
+    def test_plugin_says_retired_and_names_no_live_board(self):
+        plugin = json.loads(read(os.path.join(KIT, ".claude-plugin", "plugin.json")))
+        market = json.loads(read(os.path.join(REPO, ".claude-plugin", "marketplace.json")))
+        for desc in [plugin["description"], market["plugins"][0]["description"]]:
+            self.assertTrue(desc.startswith("Retired: moved to rain-ventures-ai/keeptrack."), desc)
+        skill = read(os.path.join(KIT, "skills", "board", "SKILL.md"))
+        self.assertIn("keeptrack.py", skill)
+        for board in ["rain-ventures-ai/consulting", "osouthgate/private-tasks"]:
+            self.assertNotIn(board, skill)
+
+    def test_stop_entry_comes_first(self):
+        files = list(json.loads(read(os.path.join(KIT, "manifest.json")))["files"].values())
+        self.assertEqual(files[0], STOP_SOURCE)
 
     def test_new_board_docs_point_to_keeptrack_init(self):
         for name in ["NEW-BOARD.md", "ROUTINE-SETUP.md", "routine-prompt.md"]:
@@ -130,6 +145,20 @@ class RetiredKitUpdate(unittest.TestCase):
         self.assertEqual(self.board.read("board/KIT_VERSION").strip(), "3")
         self.assertEqual(git(self.board.root, "status", "--porcelain").stdout, "")
 
+    def test_v1_kit_update_stops_before_writing(self):
+        # v1's kit-update (7713e30) fetches and writes one file at a time: the stop entry must come first.
+        p = subprocess.run(["git", "show", "7713e30:board/kit/board.py"], cwd=REPO, capture_output=True, text=True)
+        if p.returncode:
+            self.skipTest("commit 7713e30 is not in this clone")
+        with open(os.path.join(self.board.root, "board", "board.py"), "w") as f:
+            f.write(p.stdout)
+        git(self.board.root, "commit", "-qam", "v1 board.py")
+        r = run(self.board.root, sys.executable, "board/board.py", "kit-update", "--from", KIT, ok=False)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn(STOP_SOURCE, r.stderr)
+        self.assertEqual(self.board.read("board/KIT_VERSION").strip(), "3")
+        self.assertEqual(git(self.board.root, "status", "--porcelain").stdout, "")
+
     def test_kit_check_card_points_at_v4_steps(self):
         p = run(self.board.root, sys.executable, "board/board.py", "--file", "board/tasks.json", "kit-check", "--card", "--from", KIT)
         self.assertIn("UPGRADING.md#v4-retired", p.stdout)
@@ -168,8 +197,11 @@ class RetiredKitUpdate(unittest.TestCase):
         ff = ["--file", "board/tasks.json"]
         run(root, sys.executable, "board/board.py", *ff, "claim", "#1", "--note", "starting the kit upgrade")
         # Step 4: keep the old tool outside the repo for every board write until the merge (--file mode keeps no claim record).
-        self.assertIn("`cp board/board.py /tmp/board.py`", sec)
-        self.assertIn("mv .board-claim.json /tmp/.board-claim.json", sec)
+        step1 = sec[sec.index("\n1. "):sec.index("\n2. ")]
+        self.assertIn("`cp board/board.py /tmp/board.py`", step1)
+        self.assertIn("`python3 /tmp/board.py todo-done <card> <N>`", step1)
+        self.assertIn("mv .board-claim.json /tmp/board-claim.moved.json", sec)
+        self.assertIn("`/tmp/board.py` does not use it", sec)
         self.assertIn("never `keeptrack.py`", sec)
         old_dir = os.path.join(self.tmp, "old-tool")
         os.makedirs(old_dir)
@@ -197,7 +229,8 @@ class RetiredKitUpdate(unittest.TestCase):
         self.assertIn("python3 /tmp/board.py link", sec)
         old("heartbeat", "#1", "--note", "PR open")
         old("link", "#1", "https://github.com/example/scratch-board/pull/1", "--title", "PR")
-        old("todo-add", "#1", "Open and link the PR"); old("todo-done", "#1", "1")
+        old("todo-add", "#1", "Open and link the PR"); old("todo-add", "#1", "After the merge: migrate --to 4, verify, doctor")
+        old("todo-done", "#1", "1")
         old("comment", "#1", "PR open; the migration follows the merge")
         data = json.loads(self.board.read("board/tasks.json"))
         self.assertEqual(data["version"], 2)
@@ -238,6 +271,22 @@ class RetiredKitUpdate(unittest.TestCase):
         data = json.loads(self.board.read("board/tasks.json"))
         self.assertEqual((data["version"], data.get("layout")), (4, "split"))
         self.assertEqual(len(os.listdir(os.path.join(root, "board", "cards"))), 2)
+        # Migration step 5: tick what is left, then done with a note (keeptrack refuses open to-dos or no note).
+        final = migration[migration.index("\n5. "):]
+        self.assertIn("`python3 board/keeptrack.py todo-done <card> <N>`", final)
+        self.assertIn('`python3 board/keeptrack.py done <card> --note "<PR link>; migrated to schema 4, backup tag <tag>"`', final)
+        kt_ = lambda *a, ok=True: run(root, sys.executable, "board/keeptrack.py", *ff, *a, ok=ok)
+        self.assertNotEqual(kt_("done", "#1", "--note", "x", ok=False).returncode, 0)
+        n = kt_("show", "#1").stdout
+        opened = re.findall(r"^\s*(\d+)\. \[ \]", n, re.M)
+        self.assertTrue(opened, n)
+        for i in opened:
+            kt_("todo-done", "#1", i)
+        kt_("done", "#1", "--note", "https://github.com/example/scratch-board/pull/1; migrated to schema 4, backup tag t")
+        cards = [json.loads(self.board.read(os.path.join("board", "cards", n))) for n in os.listdir(os.path.join(root, "board", "cards"))]
+        one = [c for c in cards if c["title"] == "Card one"][0]
+        self.assertEqual((one["column"], one.get("outcome")), ("done", "completed"))
+        self.assertTrue(all(d.get("done") for d in one["todos"]))
 
 
 if __name__ == "__main__":

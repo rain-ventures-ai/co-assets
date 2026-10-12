@@ -1,7 +1,9 @@
 ---
 name: board
-description: Use a Rain task board (board/tasks.json in a GitHub repo, e.g. rain-ventures-ai/consulting or osouthgate/private-tasks) from any project. Use when asked what to work on, to pick up, claim, update, comment on, finish or add a board task, or "which board does this project use".
+description: Retired - moved to rain-ventures-ai/keeptrack (use its keeptrack plugin and keeptrack.py). Use a Rain task board (board/tasks.json in a GitHub repo) from any project. Use when asked what to work on, to pick up, claim, update, comment on, finish or add a board task, or "which board does this project use".
 ---
+
+> **Retired: moved to [rain-ventures-ai/keeptrack](https://github.com/rain-ventures-ai/keeptrack).** This plugin (`board@rain-board`) and `board.py` are no longer maintained and cannot read a keeptrack (schema 3 or 4) board: they would report nothing to work on. Install keeptrack's plugin (`keeptrack@keeptrack`) instead, and in a board repo use its `board/keeptrack.py`. The files stay here only so old clones keep working; do not change them.
 
 # Task board (from any project)
 
@@ -18,7 +20,7 @@ If the current folder is itself a board repo (it has `board/board.py` and `board
 $B where
 ```
 - It shows the board, user and auth, and where each setting comes from. It never prints a token.
-- If it says `board: (none)`, ask the human which board this project uses (for example `rain-ventures-ai/consulting` for team or client work, `osouthgate/private-tasks` for Ollie's own tasks). Then save the choice:
+- If it says `board: (none)`, ask the human which board this project uses. Then save the choice:
   ```bash
   $B use <owner/name> --user <their-github-user> [--token-env <VAR_NAME>]
   ```

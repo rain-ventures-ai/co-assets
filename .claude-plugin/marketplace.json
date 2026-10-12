@@ -6,7 +6,7 @@
     {
       "name": "board",
       "source": "./board/kit",
-      "description": "Use a Rain task board from any project: find, claim, update and finish tasks with board.py."
+      "description": "Retired: moved to rain-ventures-ai/keeptrack. Use a Rain task board from any project: find, claim, update and finish tasks with board.py."
     }
   ]
 }
