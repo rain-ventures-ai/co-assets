@@ -1,7 +1,9 @@
 {
-  "version": 3,
+  "version": 4,
   "schema": 2,
+  "moved": "https://github.com/rain-ventures-ai/keeptrack",
   "files": {
+    "board/KIT-MOVED.md": "moved-to/rain-ventures-ai/keeptrack/follow-co-assets-board-kit-UPGRADING.md-v4-retired",
     "board/board.py": "board.py",
     "board/README.md": "README.md",
     "board/UPGRADING.md": "UPGRADING.md",

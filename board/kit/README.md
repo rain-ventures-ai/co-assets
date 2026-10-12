@@ -1,5 +1,7 @@
 # Team board
 
+> **Retired: moved to [rain-ventures-ai/keeptrack](https://github.com/rain-ventures-ai/keeptrack).** The board kit (`board/kit/`, `board.py`) and the web board here are no longer maintained. Use the kit and `keeptrack.py` from keeptrack, and the web board at https://rain-ventures-ai.github.io/keeptrack/board/. The files stay here only so old clones keep working; do not change them.
+
 > **This folder is the task board for this repo.** It is not the repo's other work. A task can reference a client or area (the `client` field) or be about anything else. Leave `client` empty, or use a label like `internal`.
 
 A Trello-style kanban for this repo with no database and no server. The single source of truth is [`board/tasks.json`](tasks.json). Two things read and write it:

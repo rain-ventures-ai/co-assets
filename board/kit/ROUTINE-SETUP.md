@@ -1,5 +1,7 @@
 # Connect your own Claude routine to the board (`@claude` comments)
 
+> **Retired: moved to [rain-ventures-ai/keeptrack](https://github.com/rain-ventures-ai/keeptrack).** The board kit (`board/kit/`, `board.py`) and the web board here are no longer maintained. Set up routines with keeptrack's [`board/kit/ROUTINE-SETUP.md`](https://github.com/rain-ventures-ai/keeptrack/blob/main/board/kit/ROUTINE-SETUP.md) and the web board at https://rain-ventures-ai.github.io/keeptrack/board/. A new board starts from keeptrack's [`board/kit/NEW-BOARD.md`](https://github.com/rain-ventures-ai/keeptrack/blob/main/board/kit/NEW-BOARD.md) and `python3 board/keeptrack.py init`. A board still on this kit moves with the v4 steps in `UPGRADING.md`. This file stays here only so old clones keep working; do not change it.
+
 Each person on the board sets up **their own** routine, one for each board repo. A routine acts for one person: it uses their Claude usage and limits, and its work is recorded against them. Typing `@claude ...` in a task comment on the web board then starts *your* routine for that board on that task, after you confirm "Send to Claude?".
 
 If you would like an agent to walk you through this, ask Claude Code in this repo: **"set up my board routine"**. It uses the `board-routine-setup` skill, checks each step, and tells you when it needs you to paste a secret. An agent can guide, check and verify, but it cannot create the API trigger or paste secrets for you (see "What only you can do").

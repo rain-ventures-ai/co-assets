@@ -699,7 +699,8 @@ def cmd_kit_check(a):
     if have >= want:
         print(f"board kit is current (v{have})"); return
     print(f"board kit is out of date: this repo has v{have}, the published kit is v{want}. "
-          "Upgrade with the board-upgrade skill (.claude/skills/board-upgrade/SKILL.md, or board/UPGRADING.md in the kit).")
+          "The kit has moved to rain-ventures-ai/keeptrack: follow the \"v4 (retired)\" steps in "
+          f"{KIT_GIT}/blob/master/board/kit/UPGRADING.md#v4-retired, not the board-upgrade skill.")
     if a.card:
         title = f"Upgrade board tools to kit v{want}"
 
@@ -709,14 +710,18 @@ def cmd_kit_check(a):
             owner = kit_owner(data)
             t = {"id": "t_" + uuid.uuid4().hex[:8], "title": title, "column": "todo", "client": "", "priority": "medium", "due": "",
                  "labels": ["board"] if any(l.get("name") == "board" for l in data.get("labels", [])) else [],
-                 "assignees": [owner] if owner else [], "links": [{"title": "Upgrade notes", "url": f"{KIT_GIT}/blob/master/board/kit/UPGRADING.md"}],
+                 "assignees": [owner] if owner else [], "links": [{"title": "Upgrade notes", "url": f"{KIT_GIT}/blob/master/board/kit/UPGRADING.md#v4-retired"}],
                  "details": f"This repo's board tools are kit v{have}; the published kit is v{want}.\n\n"
-                            f"@{owner or 'upgrade owner'}: comment `@claude upgrade the board kit` to start your routine. It follows "
-                            ".claude/skills/board-upgrade/SKILL.md: copies the kit on a branch, runs the migrations, keeps this repo's own "
-                            "files, checks the board and opens a pull request for you to merge.",
+                            "The kit has moved to rain-ventures-ai/keeptrack, so `board.py kit-update` from co-assets stops on purpose. "
+                            f"@{owner or 'upgrade owner'}: comment `@claude upgrade the board kit` to start your routine. It must follow the "
+                            '"v4 (retired)" steps in the Upgrade notes link, not .claude/skills/board-upgrade/SKILL.md: it copies keeptrack\'s kit '
+                            "on a branch with `board.py kit-update --from` a keeptrack clone, switches to keeptrack.py, checks the board and opens "
+                            "a pull request for you to merge. Until the merge it writes to the board only with the old board.py (copied to /tmp); "
+                            "the migration runs after the merge.",
                  "contacts": [], "todos": [{"id": "d_" + uuid.uuid4().hex[:6], "text": x, "done": False} for x in
-                                           ["Read UPGRADING.md for each version", "kit-update on a branch", "migrate", "Check repo-specific files",
-                                            "Checks pass", "Open and link the PR"]],
+                                           ["Read UPGRADING.md v4 (retired)", "kit-update from a keeptrack clone on a branch",
+                                            "Switch to keeptrack.py and update .gitignore", "Checks pass", "Open and link the PR",
+                                            "After the merge: migrate --to 4, verify, doctor"]],
                  "history": [], "comments": [], "claim": None, "created": now(), "updated": now()}
             hist(t, "created by kit-check")
             data["tasks"].append(t); assign_nums(data); print(f"added #{t['num']} for @{owner or '?'}: {title}")
