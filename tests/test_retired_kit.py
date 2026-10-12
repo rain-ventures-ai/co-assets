@@ -37,6 +37,12 @@ def git(cwd, *args):
     return run(cwd, "git", "-c", "user.email=test@example.com", "-c", "user.name=test", *args)
 
 
+UPGRADE_TODOS = ["Read UPGRADING.md v4 (retired)", "kit-update from a keeptrack clone on a branch",
+         "Switch to keeptrack.py and update .gitignore", "Checks pass", "Open and link the PR",
+         "After the merge: migrate --to 4, verify, doctor"]
+STOP_SOURCE = "moved-to/rain-ventures-ai/keeptrack/follow-co-assets-board-kit-UPGRADING.md-v4-retired"
+
+
 def v4_section():
     text = read(os.path.join(KIT, "UPGRADING.md"))
     return text[text.index("### v4 (retired)"):text.index("### v3 (schema 2)")]
@@ -89,6 +95,20 @@ class RetiredNotices(unittest.TestCase):
         self.assertIn("UPGRADING.md#v4-retired", body)
         self.assertIn('"v4 (retired)" steps', body)
         self.assertIn("### v4 (retired)", read(os.path.join(KIT, "UPGRADING.md")))
+        todos = re.search(r"todos: \[([^\]]*)\]\.map", body).group(1)
+        self.assertEqual(json.loads("[" + todos.replace("'", '"') + "]"), UPGRADE_TODOS)
+
+    def test_routine_prompt_sends_the_kit_upgrade_to_v4_steps(self):
+        text = read(os.path.join(KIT, "routine-prompt.md"))
+        line = text[text.index("If your task is the kit upgrade"):].split("\n- ")[0]
+        self.assertIn("UPGRADING.md#v4-retired", line)
+        self.assertIn("not `.claude/skills/board-upgrade/SKILL.md`", line)
+
+    def test_stop_source_names_the_v4_steps(self):
+        m = json.loads(read(os.path.join(KIT, "manifest.json")))
+        self.assertIn(STOP_SOURCE, m["files"].values())
+        self.assertFalse(os.path.exists(os.path.join(KIT, STOP_SOURCE)))
+        self.assertIn(STOP_SOURCE, v4_section())
 
 
 class RetiredKitUpdate(unittest.TestCase):
@@ -101,9 +121,18 @@ class RetiredKitUpdate(unittest.TestCase):
         p = run(self.board.root, sys.executable, "board/board.py", "kit-update", "--from", KIT, ok=False)
         self.assertNotEqual(p.returncode, 0)
         self.assertIn("nothing changed", p.stderr)
-        self.assertIn("moved-to/github.com/rain-ventures-ai/keeptrack", p.stderr)
+        self.assertIn(STOP_SOURCE, p.stderr)
         self.assertEqual(self.board.read("board/KIT_VERSION").strip(), "3")
         self.assertEqual(git(self.board.root, "status", "--porcelain").stdout, "")
+
+    def test_kit_check_card_points_at_v4_steps(self):
+        p = run(self.board.root, sys.executable, "board/board.py", "--file", "board/tasks.json", "kit-check", "--card", "--from", KIT)
+        self.assertIn("UPGRADING.md#v4-retired", p.stdout)
+        card = [t for t in json.loads(self.board.read("board/tasks.json"))["tasks"] if t["title"] == "Upgrade board tools to kit v4"][0]
+        self.assertEqual([t["text"] for t in card["todos"]], UPGRADE_TODOS)
+        self.assertTrue(card["links"][0]["url"].endswith("/board/kit/UPGRADING.md#v4-retired"))
+        self.assertIn('"v4 (retired)" steps', card["details"])
+        self.assertIn("not .claude/skills/board-upgrade/SKILL.md", card["details"])
 
     def keeptrack_kit(self):
         kit = os.environ.get("KEEPTRACK_KIT")
@@ -131,7 +160,17 @@ class RetiredKitUpdate(unittest.TestCase):
             run(root, *py(c.replace("/tmp/kt/board/kit", kt)))
         want = json.loads(read(os.path.join(kt, "manifest.json")))["version"]
         self.assertEqual(self.board.read("board/KIT_VERSION").strip(), str(want))
-        # Step 4 and 5: drop board.py, point the hook and repo files at keeptrack.py, extend .gitignore.
+        ff = ["--file", "board/tasks.json"]
+        run(root, sys.executable, "board/board.py", *ff, "claim", "#1", "--note", "starting the kit upgrade")
+        # Step 4: keep the old tool outside the repo for every board write until the merge (--file mode keeps no claim record).
+        self.assertIn("`cp board/board.py /tmp/board.py`", sec)
+        self.assertIn("mv .board-claim.json /tmp/.board-claim.json", sec)
+        self.assertIn("never `keeptrack.py`", sec)
+        old_dir = os.path.join(self.tmp, "old-tool")
+        os.makedirs(old_dir)
+        shutil.copy(os.path.join(root, "board", "board.py"), os.path.join(old_dir, "board.py"))
+        old = lambda *a: run(root, sys.executable, os.path.join(old_dir, "board.py"), *ff, *a)
+        # Step 5 and 6: drop board.py, point the hook and repo files at keeptrack.py, extend .gitignore.
         git(root, "rm", "-q", "board/board.py")
         for name in [".claude/settings.json", "AGENTS.md", "CLAUDE.md"]:
             path = os.path.join(root, name)
@@ -144,12 +183,28 @@ class RetiredKitUpdate(unittest.TestCase):
         left = run(root, "git", "grep", "-l", "board\\.py", ok=False).stdout.split()
         self.assertEqual(left, ["board/UPGRADING.md"])
         self.assertIn("board/keeptrack.py", self.board.read(".claude/settings.json"))
-        # Step 7: checks.
+        # Step 8: checks.
         run(root, sys.executable, "-m", "py_compile", "board/keeptrack.py")
         self.assertIn("current", run(root, sys.executable, "board/keeptrack.py", "kit-check", "--from", kt).stdout)
-        ff = ["--file", "board/tasks.json"]
         self.assertIn("Card one", run(root, sys.executable, "board/keeptrack.py", *ff, "list").stdout)
         git(root, "add", "-A"); git(root, "commit", "-qm", "Move the board to keeptrack")
+        # Step 9 and the routine's own writes before the merge: the old tool keeps the live board on schema 2.
+        self.assertIn("python3 /tmp/board.py link", sec)
+        old("heartbeat", "#1", "--note", "PR open")
+        old("link", "#1", "https://github.com/example/scratch-board/pull/1", "--title", "PR")
+        old("todo-add", "#1", "Open and link the PR"); old("todo-done", "#1", "1")
+        old("comment", "#1", "PR open; the migration follows the merge")
+        data = json.loads(self.board.read("board/tasks.json"))
+        self.assertEqual(data["version"], 2)
+        self.assertEqual(data["tasks"][0]["links"][-1]["title"], "PR")
+        self.assertEqual(data["tasks"][0]["claim"]["status"], "running")
+        # Why: the same write with keeptrack.py would move the live board to schema 3, which board.py will not write.
+        probe = os.path.join(self.tmp, "probe", "tasks.json"); os.makedirs(os.path.dirname(probe))
+        shutil.copy(os.path.join(root, "board", "tasks.json"), probe)
+        run(root, sys.executable, "board/keeptrack.py", "--file", probe, "link", "#2", "https://example.com/x")
+        self.assertEqual(json.loads(read(probe))["version"], 3)
+        self.assertNotEqual(run(root, sys.executable, os.path.join(old_dir, "board.py"), "--file", probe,
+                                "comment", "#2", "x", ok=False).returncode, 0)
         # Migration, after the merge (a local file here: the backup is the committed schema-2 tasks.json).
         backup = os.path.join(self.tmp, "backup.json")
         with open(backup, "w") as f:

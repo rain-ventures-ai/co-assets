@@ -22,17 +22,18 @@ Each board has one **upgrade owner**: `settings.kit_owner` in `tasks.json`. If i
 ## Versions
 
 ### v4 (retired)
-The board kit has moved to [rain-ventures-ai/keeptrack](https://github.com/rain-ventures-ai/keeptrack) (`board/kit/`). co-assets publishes no more kit versions. A plain `board.py kit-update` (from co-assets) stops on purpose with "cannot read moved-to/github.com/rain-ventures-ai/keeptrack", so a repo is not marked v4 with the old tools. Move the repo to keeptrack's kit and `keeptrack.py` instead, with the steps below. They were tested on a v3 board (schema 2) with keeptrack kit v44; `python3 -m unittest discover -s tests` in co-assets runs them on a scratch board.
+The board kit has moved to [rain-ventures-ai/keeptrack](https://github.com/rain-ventures-ai/keeptrack) (`board/kit/`). co-assets publishes no more kit versions. A plain `board.py kit-update` (from co-assets) stops on purpose with "cannot read moved-to/rain-ventures-ai/keeptrack/follow-co-assets-board-kit-UPGRADING.md-v4-retired", so a repo is not marked v4 with the old tools. Move the repo to keeptrack's kit and `keeptrack.py` instead, with the steps below. They were tested on a v3 board (schema 2) with keeptrack kit v45; `python3 -m unittest discover -s tests` in co-assets runs them on a scratch board.
 
 Agent steps, on a branch (`git checkout -b claude/board-kit-keeptrack`):
 1. `git clone --depth 1 https://github.com/rain-ventures-ai/keeptrack /tmp/kt`
 2. `python3 board/board.py kit-update --from /tmp/kt/board/kit`. The old `board.py` copies keeptrack's kit, including `board/keeptrack.py`, and sets `board/KIT_VERSION` to keeptrack's version.
 3. `python3 board/keeptrack.py kit-update --from /tmp/kt/board/kit`. The new tool repeats the copy and also applies keeptrack's removals and optional files, which `board.py` does not know. It normally says "changed: nothing".
-4. `git rm board/board.py`. Change every `board.py` (and so `board/board.py`) to `keeptrack.py` in `.claude/settings.json` (the auto-heartbeat hook), `AGENTS.md`, `CLAUDE.md` and any routine or note. `grep -rn "board\.py" --exclude-dir=.git .` should then find it only in `board/UPGRADING.md`.
-5. Add these lines to `.gitignore` if they are missing: `.board/cache/`, `*.json.lock`, `.tmp-*.part`.
-6. Read the new `board/UPGRADING.md` from v5 on for anything else this repo needs. Do not migrate yet.
-7. Check: `python3 -m py_compile board/keeptrack.py`, `python3 board/keeptrack.py kit-check` (current) and `python3 board/keeptrack.py list` (works; it reads the schema-2 file as it is).
-8. Commit, push the branch, open a pull request and link it on the card. Say in the PR that the data migration follows the merge.
+4. Keep the old tool for the board: `cp board/board.py /tmp/board.py`, and if `.board-claim.json` exists, `mv .board-claim.json /tmp/.board-claim.json`. **Until the PR is merged, every board write (claim, heartbeat, comment, link, todo-done) uses `python3 /tmp/board.py`, never `keeptrack.py`.** Any `keeptrack.py` write moves the live `tasks.json` to schema 3, and then the default branch's `board.py` and the old web page refuse to save, for everyone, until the merge. Moving the claim record means the new auto-heartbeat hook (step 5) finds no claim and writes nothing; send heartbeats yourself with `python3 /tmp/board.py heartbeat`.
+5. `git rm board/board.py`. Change every `board.py` (and so `board/board.py`) to `keeptrack.py` in `.claude/settings.json` (the auto-heartbeat hook), `AGENTS.md`, `CLAUDE.md` and any routine or note. `grep -rn "board\.py" --exclude-dir=.git .` should then find it only in `board/UPGRADING.md`.
+6. Add these lines to `.gitignore` if they are missing: `.board/cache/`, `*.json.lock`, `.tmp-*.part`.
+7. Read the new `board/UPGRADING.md` from v5 on for anything else this repo needs. Do not migrate yet.
+8. Check: `python3 -m py_compile board/keeptrack.py`, `python3 board/keeptrack.py kit-check` (current) and `python3 board/keeptrack.py list` (works; it reads the schema-2 file as it is, and only reads).
+9. Commit, push the branch, open a pull request and link it on the card with `python3 /tmp/board.py link`. Say in the PR that the data migration follows the merge.
 
 Migration, after the PR is merged, from the default branch. It splits `board/tasks.json` into `board/cards/` and `board/people/` files, which only keeptrack's web board reads, so tell the team first:
 1. `python3 board/keeptrack.py migrate --to 4 --dry-run`. Check the counts and the file list.
