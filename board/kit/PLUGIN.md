@@ -1,5 +1,7 @@
 # Use a board from any project (Claude plugin, Codex)
 
+> **Retired: moved to [rain-ventures-ai/keeptrack](https://github.com/rain-ventures-ai/keeptrack).** The board kit (`board/kit/`, `board.py`) and the web board here are no longer maintained. Use the kit and `keeptrack.py` from keeptrack, and the web board at https://rain-ventures-ai.github.io/keeptrack/board/. The `board@rain-board` plugin and the files stay here only so old clones keep working; do not change them.
+
 A board repo (for example `rain-ventures-ai/consulting`) has its own copy of the board tools. To use a board from **another** project, install the `board` plugin once. The plugin is this folder (`board/kit/` in `rain-ventures-ai/co-assets`), so it is always the latest kit.
 
 ## Claude Code: install once

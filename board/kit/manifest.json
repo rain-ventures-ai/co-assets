@@ -1,6 +1,7 @@
 {
-  "version": 3,
+  "version": 4,
   "schema": 2,
+  "moved": "https://github.com/rain-ventures-ai/keeptrack",
   "files": {
     "board/board.py": "board.py",
     "board/README.md": "README.md",
@@ -10,6 +11,7 @@
     "board/routine-prompt.md": "routine-prompt.md",
     ".claude/skills/board/SKILL.md": "repo-skills/board/SKILL.md",
     ".claude/skills/board-routine-setup/SKILL.md": "repo-skills/board-routine-setup/SKILL.md",
-    ".claude/skills/board-upgrade/SKILL.md": "repo-skills/board-upgrade/SKILL.md"
+    ".claude/skills/board-upgrade/SKILL.md": "repo-skills/board-upgrade/SKILL.md",
+    "board/KIT-MOVED.md": "moved-to/github.com/rain-ventures-ai/keeptrack"
   }
 }

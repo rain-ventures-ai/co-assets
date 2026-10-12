@@ -1,5 +1,7 @@
 # Board kit: upgrade notes
 
+> **Retired: moved to [rain-ventures-ai/keeptrack](https://github.com/rain-ventures-ai/keeptrack).** The board kit (`board/kit/`, `board.py`) and the web board here are no longer maintained. Use the kit and `keeptrack.py` from keeptrack, and the web board at https://rain-ventures-ai.github.io/keeptrack/board/. The files stay here only so old clones keep working; do not change them.
+
 The board kit is the set of shared board tools. Its source is `rain-ventures-ai/co-assets`, folder `board/kit/`. Each board repo has a copy, and `board/KIT_VERSION` in the repo gives the kit version of that copy. `manifest.json` lists the files and where they go in a board repo.
 
 **Do not edit kit files in a board repo.** Change them in co-assets and publish a new kit version. Then upgrade each board.
@@ -18,6 +20,11 @@ Each board has one **upgrade owner**: `settings.kit_owner` in `tasks.json`. If i
 4. A change that needs more than a file copy is not finished until its section here says what the upgrading agent must do and how to check it.
 
 ## Versions
+
+### v4 (retired)
+The board kit has moved to [rain-ventures-ai/keeptrack](https://github.com/rain-ventures-ai/keeptrack) (`board/kit/`). co-assets publishes no more kit versions, and `kit-update` from here stops on purpose with "cannot read moved-to/github.com/rain-ventures-ai/keeptrack" so a repo is not marked v4 with the old tools.
+- Agent steps: do not run `kit-update` from co-assets. Follow `board/kit/UPGRADING.md` in keeptrack to move the repo to `keeptrack.py`, then close the upgrade card with a link to the PR.
+- Web board: use https://rain-ventures-ai.github.io/keeptrack/board/?repo=<owner>/<repo>&path=board/tasks.json.
 
 ### v3 (schema 2)
 Boards can be used from any project, and the kit is also a Claude Code plugin (`board@rain-board`, see `PLUGIN.md`).
