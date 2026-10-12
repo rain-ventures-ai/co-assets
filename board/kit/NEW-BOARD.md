@@ -1,5 +1,7 @@
 # Set up a new task board
 
+> **Retired: moved to [rain-ventures-ai/keeptrack](https://github.com/rain-ventures-ai/keeptrack).** The board kit (`board/kit/`, `board.py`) and the web board here are no longer maintained. To set up a new board, follow keeptrack's guide, [`board/kit/NEW-BOARD.md`](https://github.com/rain-ventures-ai/keeptrack/blob/main/board/kit/NEW-BOARD.md), which uses `python3 board/keeptrack.py init`, not `board.py init`. Use the web board at https://rain-ventures-ai.github.io/keeptrack/board/. This file stays here only so old clones keep working; do not change it.
+
 A board is a GitHub repo with the board kit and a `board/tasks.json`. The web board at
 https://rain-ventures-ai.github.io/co-assets/board/ works with any such repo. This guide is for a person and for the
 Claude that helps them. It is the target of the "Copy new-board prompt for Claude" button in Settings → Boards.

@@ -182,10 +182,10 @@
     if (!owner || (me() || '').toLowerCase() !== owner.toLowerCase()) { bar.append(el('span', null, `The upgrade owner is @${owner || '?'}.`)); return; }
     const b = el('button', 'small primary', 'Make the upgrade card');
     b.onclick = async () => {
-      const id = uid(), raw = 'https://github.com/rain-ventures-ai/co-assets/blob/master/board/kit/UPGRADING.md';
+      const id = uid(), raw = 'https://github.com/rain-ventures-ai/co-assets/blob/master/board/kit/UPGRADING.md#v4-retired';
       await mutate(n => { if (n.tasks.some(t => t.title === title && t.column !== 'done')) return;
         n.tasks.push({ id, title, column: 'todo', client: '', priority: 'medium', due: '', labels: n.labels.some(l => l.name === 'board') ? ['board'] : [], assignees: [owner],
-          details: `This repo's board tools are kit v${have}; the published kit is v${want}.\n\nComment \`@claude upgrade the board kit\` to start your routine. It follows .claude/skills/board-upgrade/SKILL.md (or board/UPGRADING.md in the kit): it copies the kit on a branch, runs the migrations, keeps this repo's own files, checks the board and opens a pull request for you to merge.`,
+          details: `This repo's board tools are kit v${have}; the published kit is v${want}.\n\nThe kit has moved to rain-ventures-ai/keeptrack, so \`board.py kit-update\` from co-assets stops on purpose. Comment \`@claude upgrade the board kit\` to start your routine. It must follow the "v4 (retired)" steps in the Upgrade notes link, not .claude/skills/board-upgrade/SKILL.md: it copies keeptrack's kit on a branch with \`board.py kit-update --from\` a keeptrack clone, switches to keeptrack.py, checks the board and opens a pull request for you to merge; the migration runs after the merge.`,
           links: [{ title: 'Upgrade notes', url: raw }], contacts: [], todos: ['Read UPGRADING.md for each version', 'kit-update on a branch', 'migrate', 'Check repo-specific files', 'Checks pass', 'Open and link the PR'].map(text => ({ id: todoId(), text, done: false })),
           comments: [], history: [], claim: null, created: nowIso(), updated: nowIso(), createdBy: me(), updatedBy: me() }); }, title);
       renderKitBar(have, want); const t = state.tasks.find(x => x.id === id);
